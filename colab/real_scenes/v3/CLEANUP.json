@@ -1,0 +1,13 @@
+{
+ "n": 1,
+ "run": "20261026-0610",
+ "model": "full",
+ "other": "prior",
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "dl3dv_res": "images_2",
+ "nframes": 420,
+ "long": 1440,
+ "px": 480,
+ "views": 26,
+ "how": "CPU floater clean-up experiment (no Kaggle): change n and push. run 5 trained the same frames twice (full, prior)"
+}

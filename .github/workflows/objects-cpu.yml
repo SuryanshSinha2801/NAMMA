@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && sudo apt-get install -y -qq libegl1 libgl1 libgomp1 > /dev/null && df -h /
       - run: pip install -q huggingface_hub numpy pillow pandas playwright==1.49.1 && python -m playwright install --with-deps chromium
       - name: CPU object refine + tours
         env:
