@@ -201,7 +201,7 @@ OVERLAY = """<style>
   document.getElementById('nm-hx').onclick = closeHelp; document.getElementById('nm-hgo').onclick = closeHelp; help.onclick = (e) => { if (e.target === help) closeHelp(); };
   document.getElementById('nm-helpbtn').onclick = (e) => { e.stopPropagation(); openHelp(); };
   let seen = '1'; try { seen = localStorage.getItem('nammaHelp'); } catch (e) {}
-  if (seen !== '1') { const t0 = Date.now(), k = setInterval(() => { const v = window.viewer; if ((v && v.state && v.state.loaded) || Date.now() - t0 > 30000) { clearInterval(k); openHelp(); } }, 300); }
+  if (seen !== '1') { const t0 = Date.now(), k = setInterval(() => { const v = window.viewer; if ((v && v.state && v.state.loaded) || Date.now() - t0 > 120000) { clearInterval(k); openHelp(); } }, 300); }
   // objects (objects3d.py): search by name / description, and click an object in the 3D view to see what it is
   const obs = o.objects || [], find = document.getElementById('nm-find'), q = document.getElementById('nm-q'), hits = document.getElementById('nm-hits'), card = document.getElementById('nm-card');
   const row = (x) => `${x.thumb ? `<img src="./${x.thumb}" alt="">` : ''}<span><b>${x.label}</b><br><small>${x.size}</small></span>`;
@@ -511,10 +511,21 @@ def head(html, fmt, bud=4):
             'localStorage.setItem("performanceMode",m?"true":"false");if(m)localStorage.setItem("gamingControls","true");'
             'localStorage.setItem("controlsPanelOpen","false");localStorage.setItem("nammaQ","3");}}catch(e){}')   # one help card: ours
     # The viewer draws the room while it streams in (pieces popping in behind the loading bar); hide the 3D view until the
-    # viewer reports it loaded (all detail in, with fullload), at most 30 s; dark meanwhile, like the viewer.
-    cover = ('<style>body:not(.namma-ready){background:#111}body:not(.namma-ready) canvas{visibility:hidden}</style>'
-             '<script>(function(){var t0=Date.now(),k=setInterval(function(){var v=window.viewer;'
-             'if((v&&v.state&&v.state.loaded)||Date.now()-t0>30000){document.body.classList.add("namma-ready");clearInterval(k);}},200);})();</script>')
+    # viewer reports it loaded (all detail in, with fullload), at most 2 min; dark meanwhile. Owner, 31 Oct: a clear loading
+    # state in the centre of the screen -> our spinner + the viewer's own percent, until loaded; a hint if it stalls.
+    cover = ('<style>body:not(.namma-ready){background:#111}body:not(.namma-show) canvas{visibility:hidden}'
+             '#nm-load{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;'
+             'gap:14px;pointer-events:none;color:#e0dcdd;font:14px Arial,sans-serif;text-align:center;padding:0 24px}'
+             'body.namma-ready #nm-load{display:none}body:not(.namma-ready) .sse-loadingWrap{display:none}'
+             '#nm-load i{width:44px;height:44px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#e8a96b;'
+             'animation:nmspin .9s linear infinite}#nm-load small{color:#aaa;font-size:12px}'
+             '@keyframes nmspin{to{transform:rotate(360deg)}}</style>'
+             '<script>(function(){var t0=Date.now(),L=null,k=setInterval(function(){var v=window.viewer,d=document.body,s=(Date.now()-t0)/1000;'
+             'if(!d)return;if(!L){L=document.createElement("div");L.id="nm-load";L.setAttribute("role","status");'
+             'L.innerHTML="<i></i><b>Loading the room</b><small>Getting everything ready\u2026</small>";d.appendChild(L);}'
+             'var t=document.querySelector(".sse-loadingText"),p=t&&/(\\d+)\\s*%/.exec(t.textContent||""),m=L.querySelector("small");'
+             'if(p)m.textContent=p[1]+"%";else if(s>90&&!(v&&v.state))m.textContent="Taking longer than usual. Check your connection and reload.";'
+             'if((v&&v.state&&v.state.loaded)||s>120){d.classList.add("namma-ready","namma-show");clearInterval(k);}},200);})();</script>')
     return html.replace('<head>', '<head>\n    <script>(function(){var q=new URLSearchParams(location.search);' + pre +
                         'if(!q.has("hpr"))q.set("hpr","1");history.replaceState(null,"",location.pathname+"?"+q.toString()+location.hash);})();</script>' +
                         cover, 1)
