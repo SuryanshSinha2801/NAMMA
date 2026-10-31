@@ -39,9 +39,9 @@ OVERLAY = """<style>
   #nm-strip button:hover{border-color:var(--nm-acc)}
   #nm-strip img{width:96px;height:58px;object-fit:cover;display:block}
   #nm-strip span{position:absolute;left:0;right:0;bottom:0;padding:10px 6px 3px;color:#fff;font-size:11px;text-align:left;background:linear-gradient(transparent,rgba(0,0,0,.7))}
-  #nm-height{position:fixed;right:max(16px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);z-index:10;display:none;flex-direction:column;align-items:center;padding:4px 0}
-  #nm-height .val{font-size:11px;color:var(--nm-text);padding:2px 0} #nm-height .lbl{font-size:10px;color:var(--nm-dark);padding-bottom:2px}
-  #nm-jump{display:none;margin-top:6px}
+  #nm-jump{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(max(16px,env(safe-area-inset-bottom)) + 112px);z-index:10;display:none;width:52px;height:52px;border-radius:50%}
+  #nm-jump svg{width:26px;height:26px}
+  body:has(.sse-settingsPanel:not(.sse-hidden)) #nm-jump{display:none!important}
   #nm-fp,#nm-help{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.25);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
   #nm-fp .box{position:relative;width:min(92vw,980px);height:min(78vh,700px);border-radius:16px;overflow:hidden}
   #nm-fp .tog{position:absolute;left:12px;top:12px;z-index:2;display:flex;gap:4px}
@@ -64,7 +64,7 @@ OVERLAY = """<style>
   #nm-hits img,#nm-card img{width:44px;height:44px;object-fit:cover;border-radius:5px;flex:none}
   #nm-card{position:fixed;z-index:11;display:none;max-width:260px;padding:6px 8px}
   #nm-card b{display:block} #nm-card small{color:var(--nm-dark)}
-  @media (max-width:640px),(pointer:coarse){#nm-strip{display:none!important}#nm-plan{width:42vw;padding:6px}#nm-jump{display:flex}
+  @media (max-width:640px),(pointer:coarse){#nm-strip{display:none!important}#nm-plan{width:42vw;padding:6px}body.nm-walk #nm-jump{display:flex}
     #nm-find{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 70px)}}
 </style>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -82,12 +82,7 @@ OVERLAY = """<style>
   <button class="nm-btn" id="nm-helpbtn" title="Controls (?)"><svg width="24" height="24"><g class="s"><use href="#nmKeysIcon"/></g><g class="f"><use href="#nmKeysIcon"/></g></svg></button>
   <button class="nm-btn" id="nm-exp" title="Open floor plan"><svg width="20" height="20" viewBox="0 0 24 24"><g class="s"><use href="#nmExpandIcon"/></g><g class="f"><use href="#nmExpandIcon"/></g></svg></button></span></div></div>
 <div id="nm-strip" class="nm-panel"></div>
-<div id="nm-height" class="nm-panel" style="border-radius:16px">
-  <button class="nm-btn" id="nm-up" title="Raise eye height (E)"><svg width="24" height="24"><g class="s"><use href="#nmUpIcon"/></g><g class="f"><use href="#nmUpIcon"/></g></svg></button>
-  <div class="val" id="nm-hv">1.5 m</div><div class="lbl">eye</div>
-  <button class="nm-btn" id="nm-down" title="Lower eye height (Q)"><svg width="24" height="24" style="transform:rotate(180deg)"><g class="s"><use href="#nmUpIcon"/></g><g class="f"><use href="#nmUpIcon"/></g></svg></button>
-  <button class="nm-btn" id="nm-jump" title="Jump"><svg width="24" height="24" viewBox="0 0 24 24"><g class="s"><use href="#nmJumpIcon"/></g><g class="f"><use href="#nmJumpIcon"/></g></svg></button>
-</div>
+<button class="nm-btn nm-panel" id="nm-jump" title="Jump" aria-label="Jump"><svg viewBox="0 0 24 24"><g class="s"><use href="#nmJumpIcon"/></g><g class="f"><use href="#nmJumpIcon"/></g></svg></button>
 <div id="nm-fp"><div class="box nm-panel"><button class="nm-btn x" id="nm-fpx" title="Close"><svg width="24" height="24"><g class="s"><use href="#nmCloseIcon"/></g><g class="f"><use href="#nmCloseIcon"/></g></svg></button>
   <div class="tog"><button class="nm-pill on" data-m="2d">2D</button><button class="nm-pill" data-m="3d">3D</button></div>
   <div class="v2d" id="nm-fp2d"></div><canvas id="nm-fp3d" style="display:none"></canvas><div class="cap" id="nm-fpcap">Click a point to go there</div></div></div>
@@ -173,35 +168,53 @@ OVERLAY = """<style>
       fixing = true; v.state.cameraMode = 'orbit'; let best = 0, bd = 1e9; o.spots.forEach((s, i) => { const d = c ? Math.hypot(s.x - c.x, s.z - c.z) : i; if (d < bd) { bd = d; best = i; } });
       go(best); setTimeout(() => { try { v.toggleWalk(); } catch (e) {} fixing = false; }, 1600); }); };
   hookWalk();
-  // walk mode: eye height (Q / E, the ▲ ▼ buttons) and a jump button on touch screens. The viewer's walk controller is exposed
-  // as window.nammaWalk by make_tour.patch_js; eye = camera above the floor (controller eyeHeight + its 0.2 m hover)
-  const hb = document.getElementById('nm-height'), hv = document.getElementById('nm-hv');
-  let eye = 1.5; try { eye = parseFloat(localStorage.getItem('nammaEye')) || 1.5; } catch (e) {}
-  const setEye = (h) => { eye = Math.round(Math.max(0.9, Math.min(2.2, h)) * 10) / 10; hv.textContent = eye.toFixed(1) + ' m';
+  // walk mode. The viewer's walk controller is exposed as window.nammaWalk by make_tour.patch_js. Eye height (owner, 31 Oct:
+  // inside the gear settings, not on screen): a group at the top of the viewer's own Settings panel, in its row/button style,
+  // and Q / E; eye = camera above the floor (controller eyeHeight + its 0.2 m hover). Jump button on touch screens, walk only.
+  let eye = 1.5, hv = null; try { eye = parseFloat(localStorage.getItem('nammaEye')) || 1.5; } catch (e) {}
+  const setEye = (h) => { eye = Math.round(Math.max(0.9, Math.min(2.2, h)) * 10) / 10; if (hv) hv.textContent = eye.toFixed(1) + ' m';
     const w = window.nammaWalk; if (w) w.eyeHeight = eye - 0.2; try { localStorage.setItem('nammaEye', String(eye)); } catch (e) {} };
-  document.getElementById('nm-up').onclick = () => setEye(eye + 0.1); document.getElementById('nm-down').onclick = () => setEye(eye - 0.1);
-  document.getElementById('nm-jump').onpointerdown = (e) => { e.preventDefault(); const w = window.nammaWalk; if (w && w._pendingMove) w._pendingMove[1] = 1; };
-  const walkUi = (m) => { hb.style.display = m === 'walk' && window.nammaWalk ? 'flex' : 'none'; if (m === 'walk') setEye(eye); };
+  const eyeRow = () => { const sp = document.querySelector('.sse-settingsPanel'); if (!sp || !window.nammaWalk) return setTimeout(eyeRow, 400);
+    if (document.getElementById('nm-eyegrp')) return;
+    const g = document.createElement('div'); g.className = 'sse-settingsGroup'; g.id = 'nm-eyegrp';
+    g.innerHTML = '<div class="sse-settingsRow"><div style="cursor:default">Eye height (walk)</div><div id="nm-hv" style="cursor:default;font-size:12px"></div></div>'
+      + '<div class="sse-settingsRow"><button id="nm-down" title="Lower (Q)">▼ Lower</button><button id="nm-up" title="Higher (E)">▲ Higher</button></div>';
+    sp.insertBefore(g, sp.firstChild); hv = document.getElementById('nm-hv'); setEye(eye);
+    document.getElementById('nm-up').onclick = (e) => { e.stopPropagation(); setEye(eye + 0.1); };
+    document.getElementById('nm-down').onclick = (e) => { e.stopPropagation(); setEye(eye - 0.1); }; };
+  eyeRow();
+  // Jump height (owner, 31 Oct: "on phone it sometimes jumps little"): while moving, the capsule brushes walls and furniture, and the
+  // viewer reads any downward push-out as a ceiling and cancels the jump. Same check, but a ceiling only when the push is mostly
+  // downward: a wall brushed while moving keeps the full jump (the jump itself, gravity and speed are the viewer's own).
+  const fixJump = (w) => { if (!w || w.__nmJump || typeof w._checkCollision !== 'function' || !w._velocity) return; w.__nmJump = 1;
+    const o = { x: 0, y: 0, z: 0 };
+    w._checkCollision = function (pos, disp) { const c = this.collision; if (!c) return;
+      const center = pos.y - this.eyeHeight + this.capsuleHeight * 0.5, half = this.capsuleHeight * 0.5 - this.capsuleRadius;
+      if (!c.queryCapsule(pos.x, center, pos.z, half, this.capsuleRadius, o)) return;
+      disp.set(o.x, o.y, o.z); pos.add(disp);
+      if (o.y < 0 && this._velocity.y > 0 && -o.y > Math.hypot(o.x, o.z)) this._velocity.y = 0;
+      if (!this._grounded && o.y > 0 && this._velocity.y < 0) { this._velocity.y = 0; this._grounded = true; } }; };
+  document.getElementById('nm-jump').onpointerdown = (e) => { e.preventDefault(); e.stopPropagation(); const w = window.nammaWalk; if (w && w._pendingMove) w._pendingMove[1] = 1; };
+  const walkUi = (m) => { document.body.classList.toggle('nm-walk', m === 'walk' && !!window.nammaWalk); if (m === 'walk') { fixJump(window.nammaWalk); setEye(eye); } };
   const hookUi = () => { const v = window.viewer; if (!v || !v.events) return setTimeout(hookUi, 300); v.events.on('cameraMode:changed', walkUi); walkUi(v.state.cameraMode); };
   hookUi();
   addEventListener('keydown', (e) => { const v = window.viewer; if (!v || v.state.cameraMode !== 'walk' || /INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) return;
     if (e.code === 'KeyE') setEye(eye + 0.1); else if (e.code === 'KeyQ') setEye(eye - 0.1); });
-  // first visit: how to move (the viewer's own controls panel is closed for new visitors by the head script, so one card shows)
+  // every visit (owner, 31 Oct), once the room is in: how to move (the viewer's own controls panel is closed for new visitors by the head script, so one card shows)
   const touch = matchMedia('(pointer:coarse)').matches || /Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
   const K = (...k) => k.map(x => `<span class="nm-key">${x}</span>`).join('');
   const sec = (t, rows) => `<div class="sec"><h1>${t}</h1>${rows.map(r => `<div class="row"><span>${r[0]}</span><span class="keys">${r[1]}</span></div>`).join('')}</div>`;
   document.getElementById('nm-hsub').textContent = touch ? 'Walk through the real place with your fingers.' : 'Walk through the real place like in a game.';
   document.getElementById('nm-rows').innerHTML = touch
-    ? sec('Walk', [['Move', 'left joystick'], ['Look around', 'drag with one finger'], ['Jump', 'jump button (right)'], ['Eye height', '▲ ▼ buttons (right)']])
+    ? sec('Walk', [['Move', 'left joystick'], ['Look around', 'drag with one finger'], ['Jump', 'jump button (right), or tap'], ['Eye height', 'gear (Settings)']])
       + sec('Go to a place', [['Rooms and spots', 'tap the floor plan'], ['Walk mode', 'person button (bottom right)']])
-    : sec('Walk', [['Move', K('W', 'A', 'S', 'D')], ['Look around', 'mouse'], ['Jump', K('Space')], ['Eye height', K('Q') + ' / ' + K('E')], ['Run / slow', K('Shift') + ' / ' + K('Ctrl')], ['Walk to a point', 'click']])
+    : sec('Walk', [['Move', K('W', 'A', 'S', 'D')], ['Look around', 'mouse'], ['Jump', K('Space')], ['Eye height', K('Q') + ' / ' + K('E') + ' or gear'], ['Run / slow', K('Shift') + ' / ' + K('Ctrl')], ['Walk to a point', 'click']])
       + sec('Go to a place', [['Rooms and spots', 'photo bar or floor plan'], ['Walk mode', 'person button (bottom right)'], ['All shortcuts', K('Shift', 'H')]]);
   const help = document.getElementById('nm-help'), openHelp = () => { help.style.display = 'flex'; },
-    closeHelp = () => { help.style.display = 'none'; try { localStorage.setItem('nammaHelp', '1'); } catch (e) {} };
+    closeHelp = () => { help.style.display = 'none'; };
   document.getElementById('nm-hx').onclick = closeHelp; document.getElementById('nm-hgo').onclick = closeHelp; help.onclick = (e) => { if (e.target === help) closeHelp(); };
   document.getElementById('nm-helpbtn').onclick = (e) => { e.stopPropagation(); openHelp(); };
-  let seen = '1'; try { seen = localStorage.getItem('nammaHelp'); } catch (e) {}
-  if (seen !== '1') { const t0 = Date.now(), k = setInterval(() => { const v = window.viewer; if ((v && v.state && v.state.loaded) || Date.now() - t0 > 120000) { clearInterval(k); openHelp(); } }, 300); }
+  { const t0 = Date.now(), k = setInterval(() => { const v = window.viewer; if ((v && v.state && v.state.loaded) || Date.now() - t0 > 120000) { clearInterval(k); openHelp(); } }, 300); }
   // objects (objects3d.py): search by name / description, and click an object in the 3D view to see what it is
   const obs = o.objects || [], find = document.getElementById('nm-find'), q = document.getElementById('nm-q'), hits = document.getElementById('nm-hits'), card = document.getElementById('nm-card');
   const row = (x) => `${x.thumb ? `<img src="./${x.thumb}" alt="">` : ''}<span><b>${x.label}</b><br><small>${x.size}</small></span>`;
