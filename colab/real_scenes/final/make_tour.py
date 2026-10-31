@@ -46,6 +46,7 @@ OVERLAY = """<style>
   #nm-fp .box{position:relative;width:min(92vw,980px);height:min(78vh,700px);border-radius:16px;overflow:hidden}
   #nm-fp .tog{position:absolute;left:12px;top:12px;z-index:2;display:flex;gap:4px}
   #nm-fp .tog .nm-pill{height:30px;padding:0 14px}
+  #nm-fp .box.nm-panel,#nm-help .card.nm-panel{background:rgba(20,20,20,.86)}
   #nm-fp .x,#nm-help .x{position:absolute;right:10px;top:10px;z-index:2}
   #nm-fp .v2d,#nm-fp canvas{position:absolute;left:0;top:52px;right:0;bottom:36px;width:100%;height:calc(100% - 88px)} #nm-fp .v2d svg{width:100%;height:100%;background:none}
   #nm-fp .cap{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:var(--nm-dark);font-size:12px}
@@ -69,25 +70,28 @@ OVERLAY = """<style>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="nmPlanIcon" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm1 2v14h6v-5h2v5h6v-6h-4v-2h4V5h-8v4h-2V5H5z"/></symbol>
   <symbol id="nmExpandIcon" viewBox="0 0 24 24"><path d="M14 3h7v7h-2V6.41l-4.29 4.3-1.42-1.42L17.59 5H14V3zM3 14h2v3.59l4.29-4.3 1.42 1.42L6.41 19H10v2H3v-7z"/></symbol>
+  <symbol id="nmKeysIcon" viewBox="0 0 24 24"><path d="M20 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></symbol>
+  <symbol id="nmUpIcon" viewBox="0 0 24 24"><path d="M12 7.6l7 7-1.6 1.6-5.4-5.4-5.4 5.4L5 14.6z"/></symbol>
+  <symbol id="nmCloseIcon" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
   <symbol id="nmJumpIcon" viewBox="0 0 24 24"><path d="M12 3l6.5 6.5h-4.25V15h-4.5V9.5H5.5L12 3zM5 18h14v2.5H5z"/></symbol>
 </svg>
 <div class="nm-ui">
 <div id="nm-find"><div id="nm-hits"></div><input id="nm-q" type="search" placeholder="Search the room: sofa, lamp, bag ..." autocomplete="off"></div>
 <div id="nm-card" class="nm-panel"></div>
 <div id="nm-plan" class="nm-panel"><div class="wrap" id="nm-mini"></div><div class="bar"><span>Floor plan</span><span class="nm-group">
-  <button class="nm-btn" id="nm-helpbtn" title="Controls (?)"><svg width="24" height="24"><g class="s"><use href="#keyboardIcon"/></g><g class="f"><use href="#keyboardIcon"/></g></svg></button>
+  <button class="nm-btn" id="nm-helpbtn" title="Controls (?)"><svg width="24" height="24"><g class="s"><use href="#nmKeysIcon"/></g><g class="f"><use href="#nmKeysIcon"/></g></svg></button>
   <button class="nm-btn" id="nm-exp" title="Open floor plan"><svg width="20" height="20" viewBox="0 0 24 24"><g class="s"><use href="#nmExpandIcon"/></g><g class="f"><use href="#nmExpandIcon"/></g></svg></button></span></div></div>
 <div id="nm-strip" class="nm-panel"></div>
 <div id="nm-height" class="nm-panel" style="border-radius:16px">
-  <button class="nm-btn" id="nm-up" title="Raise eye height (E)"><svg width="24" height="24" style="transform:rotate(90deg)"><g class="s"><use href="#chevronLeftIcon"/></g><g class="f"><use href="#chevronLeftIcon"/></g></svg></button>
+  <button class="nm-btn" id="nm-up" title="Raise eye height (E)"><svg width="24" height="24"><g class="s"><use href="#nmUpIcon"/></g><g class="f"><use href="#nmUpIcon"/></g></svg></button>
   <div class="val" id="nm-hv">1.5 m</div><div class="lbl">eye</div>
-  <button class="nm-btn" id="nm-down" title="Lower eye height (Q)"><svg width="24" height="24" style="transform:rotate(-90deg)"><g class="s"><use href="#chevronLeftIcon"/></g><g class="f"><use href="#chevronLeftIcon"/></g></svg></button>
+  <button class="nm-btn" id="nm-down" title="Lower eye height (Q)"><svg width="24" height="24" style="transform:rotate(180deg)"><g class="s"><use href="#nmUpIcon"/></g><g class="f"><use href="#nmUpIcon"/></g></svg></button>
   <button class="nm-btn" id="nm-jump" title="Jump"><svg width="24" height="24" viewBox="0 0 24 24"><g class="s"><use href="#nmJumpIcon"/></g><g class="f"><use href="#nmJumpIcon"/></g></svg></button>
 </div>
-<div id="nm-fp"><div class="box nm-panel"><button class="nm-btn x" id="nm-fpx" title="Close"><svg width="24" height="24"><use href="#closeIcon"/></svg></button>
+<div id="nm-fp"><div class="box nm-panel"><button class="nm-btn x" id="nm-fpx" title="Close"><svg width="24" height="24"><g class="s"><use href="#nmCloseIcon"/></g><g class="f"><use href="#nmCloseIcon"/></g></svg></button>
   <div class="tog"><button class="nm-pill on" data-m="2d">2D</button><button class="nm-pill" data-m="3d">3D</button></div>
   <div class="v2d" id="nm-fp2d"></div><canvas id="nm-fp3d" style="display:none"></canvas><div class="cap" id="nm-fpcap">Click a point to go there</div></div></div>
-<div id="nm-help"><div class="card nm-panel"><button class="nm-btn x" id="nm-hx" title="Close"><svg width="24" height="24"><use href="#closeIcon"/></svg></button>
+<div id="nm-help"><div class="card nm-panel"><button class="nm-btn x" id="nm-hx" title="Close"><svg width="24" height="24"><g class="s"><use href="#nmCloseIcon"/></g><g class="f"><use href="#nmCloseIcon"/></g></svg></button>
   <div class="title">How to explore</div><div class="sub" id="nm-hsub"></div><div id="nm-rows"></div><button class="nm-pill go on" id="nm-hgo">Start exploring</button></div></div>
 </div>
 <script type="module">
