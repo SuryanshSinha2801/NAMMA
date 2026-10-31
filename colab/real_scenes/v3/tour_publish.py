@@ -11,6 +11,18 @@ Used by gh_run.py after a run, and on its own (.github/workflows/tour-publish.ym
 import os, re, secrets, shutil, sys
 
 
+def restore_js(api, repo, path, dst):
+    """The newest version of `path` in the results dataset's history that is not empty, copied to dst."""
+    from huggingface_hub import hf_hub_download
+    for c in api.list_repo_commits(repo, repo_type='dataset'):
+        info = api.get_paths_info(repo, [path], repo_type='dataset', revision=c.commit_id)
+        if info and getattr(info[0], 'size', 0) > 100000:
+            f = hf_hub_download(repo, path, repo_type='dataset', revision=c.commit_id, local_dir='restore_js')
+            print('index.js restored from commit', c.commit_id[:8], os.path.getsize(f), 'bytes', flush=True)
+            shutil.copy(f, dst); return dst
+    raise SystemExit(f'no non-empty {path} in the history of {repo}')
+
+
 def prune(api, sp, results_repo, url_path, say=print):
     """The free Space holds 1 GB (30 Oct: full, publish refused). Keep only the folders some tour*_url.txt in the results dataset
     still points to (the links handed out), except the one about to be replaced, then squash the history so the space is freed."""
@@ -110,7 +122,12 @@ if __name__ == '__main__':
         h = open(f'{tour}/index.html').read(); b = re.search(r'q\.set\("budget","(\d+)"\)', h)
         h = make_tour.head(h, 'lod' if os.path.isdir(f'{tour}/lod') else 'sog', int(b.group(1)) if b else 4)
         if os.path.exists(f'{tour}/overlay.json'): h = make_tour.overlay(h)                # current floor plan / spots / controls UI
-        if os.path.exists(f'{tour}/index.js'): open(f'{tour}/index.js', 'w').write(make_tour.patch_js(open(f'{tour}/index.js').read()))
+        js_path = f'{tour}/index.js'
+        if not os.path.exists(js_path) or os.path.getsize(js_path) == 0:                 # emptied by the 31 Oct publish bug: take it back
+            js_path = restore_js(api, repo, f'{run}/{src}/index.js', js_path)               # from the newest commit where it wasn't empty
+        js = open(js_path).read(); assert len(js) > 100000, f'viewer index.js looks wrong ({len(js)} bytes)'
+        open(f'{tour}/index.js', 'w').write(make_tour.patch_js(js))                       # read first, then write (never truncate before reading)
+        assert os.path.getsize(f'{tour}/index.js') > 100000
         open(f'{tour}/index.html', 'w').write(h)
         print('page start options updated', flush=True)
         for x in ('index.html', 'index.js'):
