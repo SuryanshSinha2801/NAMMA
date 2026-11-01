@@ -187,5 +187,22 @@ def main(data, ply, out, long=480, step=3):
     rep['minutes'] = round((time.time() - T0) / 60, 1); json.dump(rep, open(f'{out}/solidify.json', 'w'), indent=1); say('SOLIDIFY', json.dumps(rep))
 
 
-if __name__ == '__main__':
+def unneedle_file(data, ply, out_ply, ratio=4.0):
+    """The cupboard fix on a model file, no training (owner, 1 Nov: the fix that made the hotel's cupboard solid from the side):
+    needle splats inside the room (SfM points 1-99 %, +5 %, as fixer_refine) get their longest axis capped at ratio x the middle.
+    Everything else is copied unchanged. Returns how many splats changed."""
+    from plyfile import PlyData, PlyElement
+    sys.path.insert(0, os.getcwd()); from datasets.colmap import Parser
+    p = Parser(data, factor=1, normalize=True, test_every=8)
+    lo, hi = np.percentile(p.points, 1, 0), np.percentile(p.points, 99, 0); pad = (hi - lo) * 0.05; lo, hi = lo - pad, hi + pad
+    v = PlyData.read(ply)['vertex'].data.copy(); X = np.stack([v['x'], v['y'], v['z']], 1); inside = np.all((X > lo) & (X < hi), 1)
+    ls, n = unneedle(np.stack([v['scale_0'], v['scale_1'], v['scale_2']], 1), inside, float(ratio))
+    for i in range(3): v[f'scale_{i}'] = ls[:, i]
+    PlyData([PlyElement.describe(v, 'vertex')]).write(out_ply); say('unneedle:', n, 'of', len(v), 'splats shortened (ratio', ratio, ')')
+    return n
+
+
+if __name__ == '__main__' and sys.argv[1:2] == ['unneedle']:
+    unneedle_file(*sys.argv[2:])
+elif __name__ == '__main__':
     main(*sys.argv[1:])

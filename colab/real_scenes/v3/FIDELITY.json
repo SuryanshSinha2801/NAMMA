@@ -1,11 +1,12 @@
 {
- "n": 6,
+ "n": 7,
  "run": "20261031-1528",
- "compare": [
-  "full/model.ply",
-  "solid/clean.ply"
+ "unneedle": "solid/clean.ply",
+ "ratios": [
+  4,
+  6
  ],
  "px": 480,
  "views": 40,
- "how": "compare: two models of the run rendered from the same held-out + off-path cameras, no photos (final/model_compare.py); otherwise the tour fidelity check vs real frames. Change n and push"
+ "how": "unneedle: the cupboard fix on a finished model (needles capped at ratio x the middle axis, strongest ratio that keeps the filmed views >= 33 dB) -> <run>/solid/unneedled.ply; compare: two models vs each other; otherwise the tour fidelity check. Change n and push"
 }

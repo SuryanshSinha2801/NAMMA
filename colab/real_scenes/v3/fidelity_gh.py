@@ -14,7 +14,7 @@ from huggingface_hub import HfApi, snapshot_download
 api = HfApi(token=tok); user = api.whoami()['name']; repo = f'{user}/namma-v3-out'; R = cfg['run']
 d = snapshot_download(repo, repo_type='dataset', local_dir='dl', token=tok,
                       allow_patterns=[f'{R}/full/model.ply', f'{R}/tour/plan.json', f'{R}/tour/tour.json', f'{R}/sparse/**']
-                      + [f'{R}/{m}' for m in cfg.get('compare', [])])
+                      + [f'{R}/{m}' for m in cfg.get('compare', [])] + ([f"{R}/{cfg['unneedle']}"] if cfg.get('unneedle') else []))
 mpu = json.load(open(f'{d}/{R}/tour/tour.json'))['metres_per_unit']
 T = os.path.abspath('work'); EX = f'{T}/gsplat/examples'; data = f'{T}/data'; os.makedirs(data, exist_ok=True); os.makedirs(OUT, exist_ok=True)
 run(f'git clone -q --depth 1 -b v1.5.3 https://github.com/nerfstudio-project/gsplat {T}/gsplat && touch {EX}/datasets/__init__.py')
@@ -22,6 +22,20 @@ run('pip install -q torch --index-url https://download.pytorch.org/whl/cpu && pi
     'typing_extensions "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e" && sed -i '
     '"s/np.uint64(-1)/np.uint64(np.iinfo(np.uint64).max)/" $(python -c "import importlib.util as u; print(u.find_spec(\'pycolmap\').submodule_search_locations[0])")/scene_manager.py')
 shutil.copytree(f'{d}/{R}/sparse', f'{data}/sparse', dirs_exist_ok=True)
+if cfg.get('unneedle'):                                    # the cupboard fix on a finished model, no training (final/solidify.unneedle_file)
+    src = f"{d}/{R}/{cfg['unneedle']}"; rep_ = {}
+    import model_compare; model_compare.placeholders(data)                    # the Parser needs frame files: stand-ins of the right size
+    for ratio in cfg.get('ratios', [4, 6]):                  # strongest first; keep it only if the filmed views keep their look
+        out_ = f'{T}/un{ratio}.ply'; run(f'cd {EX} && PYTHONPATH={EX}:{FIN}:$PYTHONPATH python {FIN}/solidify.py unneedle {data} {src} {out_} {ratio}')
+        sub = f'{OUT}/ratio{ratio}'
+        run(f'cd {EX} && PYTHONPATH={EX}:{FIN}:$PYTHONPATH python {FIN}/model_compare.py {data} {sub} {mpu} {cfg.get("px", 480)} {cfg.get("views", 40)} model={src} unneedled={out_}')
+        cr = json.load(open(f'{sub}/compare_report.json')); rep_[ratio] = {k: cr[k] for k in ('held_out', 'off_path')}
+        if cr['held_out']['psnr_mean'] >= 33 and cr['held_out']['psnr_min'] >= 28:
+            api.upload_file(path_or_fileobj=out_, path_in_repo=f'{R}/solid/unneedled.ply', repo_id=repo, repo_type='dataset')
+            rep_['chosen'] = ratio; break
+    json.dump(rep_, open(f'{OUT}/unneedle_report.json', 'w'), indent=1); say('UNNEEDLE', json.dumps(rep_))
+    dst = f'fidelity/{STAMP}'; api.upload_folder(folder_path=OUT, path_in_repo=dst, repo_id=repo, repo_type='dataset')
+    say(f'results: hf://datasets/{repo}/{dst}'); sys.exit(0)
 if cfg.get('compare'):                                     # two models of the run vs each other, no photos (final/model_compare.py)
     a_, b_ = cfg['compare']; nm = lambda m: m.split('/')[0]
     r = subprocess.run(f'cd {EX} && PYTHONPATH={EX}:{FIN}:$PYTHONPATH python {FIN}/model_compare.py {data} {OUT} {mpu} {cfg.get("px", 480)} '
