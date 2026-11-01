@@ -153,6 +153,19 @@ for f in ['sfm_report.json', 'precheck.json', 'v3_summary.json', 'preview/metric
 for lg in glob.glob(f'{OUT}/*.log'): print(f'==== {os.path.basename(lg)} (last 120 lines)\n' + ''.join(open(lg, errors='ignore').readlines()[-120:]), flush=True)
 say('files:', sorted(os.path.relpath(f, OUT) for f in glob.glob(f'{OUT}/**/*', recursive=True) if os.path.isfile(f)))
 
+def dispatch_publish(pub):
+    """Start the tour-publish workflow (newest code on the branch) with these PUBLISH settings: build, automatic checks,
+    publish, live check, roll back on failure. GITHUB_TOKEN may start workflow_dispatch runs (actions: write)."""
+    import urllib.request
+    rp, tk = os.environ.get('GITHUB_REPOSITORY'), os.environ.get('GITHUB_TOKEN')
+    if not (rp and tk): say('publish not started: no GitHub token here'); return
+    br = os.environ.get('GITHUB_REF_NAME') or 'claude/wonderful-cori-i3fn41'
+    rq = urllib.request.Request(f'https://api.github.com/repos/{rp}/actions/workflows/tour-publish.yml/dispatches', method='POST',
+                                data=json.dumps(dict(ref=br, inputs=dict(publish=json.dumps(pub)))).encode(),
+                                headers={'Authorization': f'Bearer {tk}', 'Accept': 'application/vnd.github+json'})
+    try: urllib.request.urlopen(rq, timeout=30); say('tour publish started for', pub.get('run'))
+    except Exception as e: say('could not start the tour publish:', str(e)[:200])
+
 def tour_step():
     """Tour like splattour.com (final/make_tour.py): cameras need gsplat's examples + CPU torch, the converter needs Node.
     Frames come from the run's images/ (saved since run 4) or are rebuilt from the scene's Kaggle dataset like the job did."""
@@ -197,8 +210,10 @@ if tok:                                       # the trained model goes to HF FIR
         lfs_types(api, repo); api.upload_folder(folder_path=OUT, path_in_repo=RUN, repo_id=repo, repo_type='dataset', ignore_patterns=skip())
         say(f'results (before the tour): https://huggingface.co/datasets/{repo}/tree/main/{RUN}')
     except Exception as e: say('HF upload failed:', str(e)[:300])
-try: tour_step()
-except Exception as e: say('tour failed:', str(e)[:400])
+MESH_ONLY = cfg.get('env', {}).get('MESH_ONLY') == '1'                                # geometry for an existing run: no tour of its own
+if not MESH_ONLY:
+    try: tour_step()
+    except Exception as e: say('tour failed:', str(e)[:400])
 if tok:
     try:
         from huggingface_hub import HfApi
@@ -212,11 +227,17 @@ if tok:
                 if os.environ.get('INBOX_JOB'):                                               # the link, privately, for the app
                     stage('done', run=RUN, link=open('tour_url.txt').read().strip())
             except Exception as e: say('tour publish failed:', str(e)[:300])
+        if MESH_ONLY and cfg.get('mesh_for') and os.path.exists(f'{OUT}/mesh/mesh.json'):  # the mesh goes where that run's tour looks for it
+            api.upload_folder(folder_path=f'{OUT}/mesh', path_in_repo=f"{cfg['mesh_for']}/mesh", repo_id=repo, repo_type='dataset')
+            say('mesh placed in', cfg['mesh_for'], json.load(open(f'{OUT}/mesh/mesh.json')))
+            if cfg.get('publish'): dispatch_publish(cfg['publish'])
         if os.environ.get('GITHUB_STEP_SUMMARY'):
             open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write(f'Results: https://huggingface.co/datasets/{repo}/tree/main/{RUN}\n')
     except Exception as e: say('HF upload failed:', str(e)[:300])
 if cfg.get('env', {}).get('PREP_ONLY') == '1':                                       # whole-house pre-check: no model expected
     if ok and not os.path.exists(f'{OUT}/precheck.json'): ok, s = False, 'complete, but no precheck.json'
+elif MESH_ONLY:
+    if ok and not os.path.exists(f'{OUT}/mesh/mesh.json'): ok, s = False, 'complete, but no mesh (mesh.json missing)'
 elif ok and not os.path.exists(f'{OUT}/full/metrics.json'): ok, s = False, 'complete, but no full model (metrics.json missing)'
 if not ok: stage('failed', reason=f'Kaggle job ended with: {s[-200:]}')
 elif os.environ.get('INBOX_JOB') and not os.path.exists('tour_url.txt'): stage('failed', reason='no tour was published (see the GitHub log)')

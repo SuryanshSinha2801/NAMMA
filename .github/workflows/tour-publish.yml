@@ -7,6 +7,12 @@ on:
   push:
     branches: [claude/wonderful-cori-i3fn41]
     paths: [colab/real_scenes/v3/PUBLISH.json]
+  workflow_dispatch:                       # started by gh_run.py (e.g. after a MESH_ONLY run) with its own PUBLISH settings
+    inputs:
+      publish:
+        description: PUBLISH.json contents (JSON) to use instead of the file
+        required: false
+        default: ""
 concurrency:
   group: tour-publish
   cancel-in-progress: false
@@ -25,6 +31,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -q huggingface_hub numpy scipy pillow plyfile trimesh fast-simplification opencv-python-headless playwright==1.49.1 && python -m playwright install --with-deps chromium
+      - name: Settings from the dispatch, if any
+        if: ${{ github.event.inputs.publish != '' && github.event.inputs.publish != null }}
+        env:
+          PUB: ${{ github.event.inputs.publish }}
+        run: python -c "import json,os;json.dump(json.loads(os.environ['PUB']),open('colab/real_scenes/v3/PUBLISH.json','w'),indent=1)"
       - name: Publish
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}

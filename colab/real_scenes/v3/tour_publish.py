@@ -112,7 +112,7 @@ if __name__ == '__main__':
             api.upload_file(path_or_fileobj=f'{tour}/{x}', path_in_repo=f'{run}/{src}/{x}', repo_id=repo, repo_type='dataset')
     if co:
         make_tour.collision(os.path.join(d, run), tour)
-        api.upload_file(path_or_fileobj=f'{tour}/collision.glb', path_in_repo=f'{run}/tour/collision.glb', repo_id=repo, repo_type='dataset')
+        api.upload_file(path_or_fileobj=f'{tour}/collision.glb', path_in_repo=f'{run}/{src}/collision.glb', repo_id=repo, repo_type='dataset')   # the tour being updated (was always tour/)
     if rb:                                                                                # scene file again from the model (current settings)
         import subprocess; W = os.path.abspath('st')
         subprocess.run(f'mkdir -p {W} && cd {W} && npm init -y >/dev/null && npm i -s --no-audit --no-fund playcanvas@2.23.2 '
