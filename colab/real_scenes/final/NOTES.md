@@ -168,3 +168,17 @@ not match the video. Earlier notes calling its contents "real" were reported, ne
 - Walls: graded mottling = clean's renders colour-graded in image space (ratio 0.94-1.07 per view), i.e. no new blotches; the
   colour change only scales existing contrast. Refined v2 adds local dark smudges (visible on the bed wall).
 - Tour: tour_graded_url.txt (single-file compressed PLY, loads in ~15 s in CI).
+
+## Whole house, one model (run 20261031-1528, 31 Oct - 1 Nov)
+- Inputs reused from the failed namma-house run (its main camera piece, frames 1394-3357), thinned to every 2nd frame
+  (final/thin_model.py): 982 frames, all registered, 1 model, 109,906 points. No new decode or camera solve.
+- Run 4 recipe (mcmc, bilateral grid, depth loss, 1440 px), 83.6 steps per training view: 71,812 steps, 1.89 M splats for
+  46.6 m^2. Go/no-go dry run: 0.221 s/step, 3.8 GB -> 5.34 h predicted; real 4.9 h training, 5 h 20 min for the whole job.
+- Held-out (123 views): 24.15 dB / SSIM 0.928 / LPIPS 0.146; exposure-fair 27.62 dB / 0.932; needles 7.2 %.
+  Run 4: 25.57 / 0.928 / 0.202; exposure-fair 29.22 / 0.934; needles 12.7 %. Same SSIM, better LPIPS and fewer needles,
+  1.6 dB lower PSNR. QA pass false (27.62 < 28).
+- By eye: the living room and lounge are photoreal. Weak: the staircase (treads smeared, few views), a white door/hallway
+  (washed out, streaks), kitchen off-path views (smears).
+- Clean-up (solidify, never-seen splats) dropped 69 % (580,850 kept of 1,889,189). Checked with final/model_compare.py
+  (fidelity/20261101-0056): trained vs cleaned rendered from 40 held-out + 9 off-path cameras: >= 79 dB, 0 changed pixels.
+  The dropped splats are invisible; the tour ships the cleaned model.

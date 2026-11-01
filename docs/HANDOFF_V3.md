@@ -441,3 +441,12 @@ Rules:
 
 Reuse: `RUN.json` `source: "reuse:<kernel>"` attaches that run's Kaggle output (frames + sparse/0). `THIN=k` keeps every k-th
 frame (`final/thin_model.py`, tested byte-identical round trip). The job must use another kernel name.
+
+### Whole house result (1 Nov)
+- Run 20261031-1528 (namma-house-train): one model of the house's main camera piece with the run 4 recipe, no errors, 5 h 20 min.
+  Held-out exposure-fair 27.62 dB / SSIM 0.932 / LPIPS 0.146 (run 4: 29.22 / 0.934 / 0.202). Details: final/NOTES.md.
+- Clean-up check without photos: `final/model_compare.py` (fidelity job, FIDELITY.json `compare`). Cleaned = trained, renders identical.
+- Tour v2 (viewer 1.41, current UI, cleaned model, floor plan redrawn): PUBLISH.json run 20261031-1528, link in
+  `20261031-1528/tour_v2_url.txt` (private dataset only).
+- Bug fixed 31 Oct: tour_publish 'head' emptied index.js (`open(f,'w').write(patch(open(f).read()))` truncates before reading);
+  the live hotel tour showed a white screen for ~40 min. Now read first, size-checked, and restored from history if empty.
