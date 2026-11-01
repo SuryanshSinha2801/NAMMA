@@ -1,0 +1,14 @@
+{
+  "n": 0,
+  "collect": false,
+  "source": "kaggle:<YOUR_KAGGLE_USERNAME>/namma-test-sample",
+  "kernel": "namma-r1-sample",
+  "env": {
+    "NFRAMES": "120",
+    "LONG": "960",
+    "STEPS": "3000",
+    "PREVIEW": "0",
+    "VARIANTS": "[[\"full\", 3000, 300000], [\"geometry\", 3000, 300000, \"2dgs\"]]"
+  },
+  "note": "Round 1 smoke test only: 120 frames, 960 px, short 3DGS + 2DGS geometry runs. Set n > 0 only after uploading the sample video to your private Kaggle dataset and configuring GitHub Actions secrets."
+}
