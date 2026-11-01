@@ -1,6 +1,6 @@
 {
  "run": "20261031-1528",
- "rebuild": true,
+ "rebuild": false,
  "model": "solid/clean.ply",
  "sh": 3,
  "dst": "tour_v2",
@@ -24,6 +24,6 @@
  "head": false,
  "floorplan": false,
  "collision": true,
- "n": 40,
- "note": "house tour v2, same link: restored room-box and floor-plan wall collision; no 2DGS mesh collision or walked-space carving"
+ "n": 41,
+ "note": "house tour v2, same link: rebuild original room-box and floor-plan wall collision, deploy browser editor with eraser, undo and live apply"
 }
