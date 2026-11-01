@@ -107,10 +107,15 @@ def publish(api, user, results_repo, run, tour_dir, say=print, url_path=None):
             api.create_repo(sp, repo_type='space', space_sdk='static', private=False, exist_ok=True)
     page = '<!doctype html><meta charset="utf-8"><title>NAMMA</title><body style="font:16px sans-serif;padding:24px;background:#111;color:#ddd"><h1>NAMMA 3D tours</h1><p>Open a tour with its link.</p>'
     open('tours_index.html', 'w').write(page); api.upload_file(path_or_fileobj='tours_index.html', path_in_repo='index.html', repo_id=sp, repo_type='space')
-    open('space_readme.md', 'w').write('---\ntitle: NAMMA tour\nemoji: 🏠\ncolorFrom: gray\ncolorTo: gray\nsdk: static\npinned: false\n---\n')
+    open('space_readme.md', 'w').write('---\ntitle: NAMMA tour\nemoji: 🏠\ncolorFrom: gray\ncolorTo: gray\nsdk: static\npinned: false\nhf_oauth: true\nhf_oauth_expiration_minutes: 480\nhf_oauth_scopes:\n- read-repos\n- write-repos\n---\n')
     api.upload_file(path_or_fileobj='space_readme.md', path_in_repo='README.md', repo_id=sp, repo_type='space')
     try: api.update_repo_settings(sp, repo_type='space', private=False)
     except Exception: api.update_repo_visibility(sp, private=False, repo_type='space')
+    editor_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'collision_editor.html')
+    if os.path.isfile(editor_file):
+        api.upload_file(path_or_fileobj=editor_file, path_in_repo='editor/index.html', repo_id=sp, repo_type='space',
+                        commit_message='Deploy NAMMA live collision editor')
+        say('collision editor deployed at', f'https://{sp.replace("/", "-")}.static.hf.space/editor/index.html')
     open('tour_url.txt', 'w').write(f"https://{sp.replace('/', '-')}.static.hf.space/{folder}/index.html\n")
     api.upload_file(path_or_fileobj='tour_url.txt', path_in_repo=url_path or f'{run}/tour_url.txt', repo_id=results_repo, repo_type='dataset')
     say('tour published (public Space, random folder; link in the private results dataset: tour_url.txt)')
@@ -135,7 +140,7 @@ if __name__ == '__main__':
     fp, co, rb, hd, rs = ('floorplan' in sys.argv[2:], 'collision' in sys.argv[2:], 'rebuild' in sys.argv[2:],
                           'head' in sys.argv[2:], 'respot' in sys.argv[2:])
     rs = rs or ((hd or rb) and 'norespot' not in sys.argv[2:])      # every page update repairs spots + field of view itself (checked, safe)
-    extra = ([f'{run}/full/{x}' for x in ('model.ply', 'level.json', 'nav.json')] if fp or rb else []) + ([f'{run}/mesh/mesh.glb'] if co or rb else [])
+    extra = ([f'{run}/full/{x}' for x in ('model.ply', 'level.json', 'nav.json')] if fp or rb else []) + ([f'{run}/mesh/{x}' for x in ('mesh.glb', 'mesh.json')] if co or rb else [])
     if rb and os.environ.get('TOUR_MODEL'): extra.append(f"{run}/{os.environ['TOUR_MODEL']}")
     if rs: extra += [f'{run}/sparse/**', f'{run}/full/level.json']
     if rb and os.environ.get('TOUR_MODEL'):                                               # model still being made by another job: wait (max 90 min)
