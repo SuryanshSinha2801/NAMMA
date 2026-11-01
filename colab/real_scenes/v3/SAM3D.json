@@ -1,0 +1,11 @@
+{
+ "n": 2,
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "res": "images_2",
+ "sample": 60,
+ "long": 1280,
+ "space": "dev-bjoern/sam3d-objects-mcp",
+ "objects": {"couch": "sofa", "bed": "bed", "chair": "armchair", "tv": "television", "suitcase": "suitcase", "refrigerator": "mini fridge"},
+ "max_objects": 4,
+ "how": "change n and push: .github/workflows/sam3d-demo.yml -> v3/sam3d_gh.py (CPU runner + free ZeroGPU Space; no Kaggle)"
+}

@@ -1,0 +1,29 @@
+# Floater clean-up experiments on the CPU (owner 27 Oct: no Kaggle GPU hours): dual-training agreement and neighbourhood-shape
+# filters on a trained model, measured with a CPU renderer on held-out frames (final/cleanup_cpu.py, final/cpu_render.py).
+# Start: change "n" in colab/real_scenes/v3/CLEANUP.json and push. Results: hf://datasets/<user>/namma-v3-out/cleanup/<time>/.
+name: cleanup-cpu
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/CLEANUP.json]
+concurrency:
+  group: cleanup-cpu
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q huggingface_hub numpy pillow pandas
+      - name: CPU clean-up experiment
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/cleanup_cpu_gh.py

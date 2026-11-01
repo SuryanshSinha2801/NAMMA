@@ -134,3 +134,28 @@ not match the video. Earlier notes calling its contents "real" were reported, ne
   Fix (kmax): keep adding photos (any aligned pass) while they still fill holes. Reproduced on the owner's data here: holes at
   30 cm 13.1 -> 7.0%, at 50 cm 24.3 -> 13.7% (real pixels; checked visually: the dark doorway behind the pillar, not misplaced).
   Verdict: video-model filling is honest now but adds little (0.8% of pixels for 20 GPU-minutes); real coverage matters more.
+- **26 Oct (night of 25th): namma-all failed, v3 planned and built.** namma-all (ARKitScenes iPad video): Depth Anything 3 ran
+  out of GPU memory on landscape frames, merged 5 of 300, every later stage failed on missing depth; SfM placed 168/300 frames in
+  2 models. Decision (approved plan): stop compensating with custom code; the default path is now the standard stack: frames ->
+  hloc SuperPoint+LightGlue (COLMAP model, SIMPLE_RADIAL) -> gsplat's own examples/simple_trainer.py (MCMC, bilateral grid for
+  auto-exposure, SfM depth loss, held-out eval every 8th frame) -> v3_qa.py (QA sheet: held-out real | model, 50 cm off the walk,
+  outside, top-down; metrics.json with pass = exposure-fair held-out PSNR >= 28 dB and < 10% needles) -> levelled .splat.
+  Job: colab/real_scenes/v3 (preview 7k steps on GPU 1 while the full 30k model trains on GPU 0). Trained classic (not
+  antialiased) so SuperSplat shows exactly what was measured. Checked here on CPU: trainer deps import on Python 3.13 + numpy 2
+  (pycolmap fork needs np.uint64(-1) patched), Parser reads hloc-style COLMAP binaries incl. SIMPLE_RADIAL undistortion, the
+  trainer CLI accepts every flag, depth-loss loader works, QA renders match the real frames (stub renderer), levelled floor y = 0,
+  sharpest-frame picker skips blurred frames. Not checkable here: GPU training, fused-ssim build (pure-torch shim as fallback).
+- **v3 run 1 (25 Oct 22:05 IST, from GitHub Actions; DL3DV-Benchmark #44 hotel room, handheld phone, 411 frames 960x540):**
+  cameras **411/411 registered, 1 model, 1.15 px reprojection error** (hloc SuperPoint+LightGlue, SIMPLE_RADIAL k1 = -0.0007),
+  11 min on a T4. gsplat build reused from namma-prep (ready in 1 s), fused-ssim compiled. Training never started: Kaggle's
+  preinstalled Hugging Face `datasets` package hid gsplat's examples/datasets folder (namespace package, no __init__.py)
+  -> "No module named 'datasets.colmap'". Fixed (touch __init__.py; the job now imports the trainer once and installs whatever
+  is missing before training). Kaggle is driven from GitHub Actions now (.github/workflows/namma-v3.yml): this container
+  cannot reach kaggle.com.
+- **v3 run 2 (25-26 Oct, DL3DV hotel room, 411 handheld phone frames): first genuinely photoreal model.** Cameras 411/411,
+  1.15 px. Full model (gsplat simple_trainer MCMC, bilateral grid, depth loss, 30k steps, 68 min on a T4, 1.5M splats):
+  **held-out 29.50 dB exposure-fair (25.71 raw), SSIM 0.945, LPIPS 0.120** on 52 held-out frames; preview (7k, 10 min) 26.76 dB.
+  Checked by eye: held-out renders near-identical to the real frames, views 50 cm off the walk clean. QA-tool faults found and
+  fixed (not yet re-run): needle metric counted flat discs (76%); outside/top-down shots looked into the shell of big splats that
+  models the view through the window -> dollhouse crop now. Results: HF dataset anasrazy/namma-v3-out/20261025-1835.
+  Conclusion: with a good handheld capture the standard stack works; the owner's own re-filmed room is next.

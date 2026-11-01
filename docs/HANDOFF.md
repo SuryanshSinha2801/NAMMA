@@ -1,3 +1,5 @@
+> **Superseded**: the current hand-off is `docs/HANDOFF_V3.md` (v3 pipeline, 26 Oct). This file is kept for history.
+
 # NAMMA Space: hand-off for parallel work (2026-10-24)
 
 ## Target

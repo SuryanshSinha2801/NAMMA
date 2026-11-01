@@ -1,0 +1,2 @@
+# plain lines: screenshot + text; "tour <url>": open it and move around inside (slow software WebGL)
+tour https://anasrazy-namma-tour.static.hf.space/20261025-2153/index.html?webgl

@@ -1,0 +1,16 @@
+{
+ "n": 3,
+ "run": "20261026-0327",
+ "frames_dataset": "anasrazy/namma-dl3dv-389a460ca1-r2",
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "dl3dv_res": "images_2",
+ "nframes": 420,
+ "long": 1440,
+ "views": 8,
+ "shift": 0.15,
+ "eval_views": 16,
+ "strength": 0.7,
+ "refine_steps": 400,
+ "prompt": "An indoor shot of a hotel room.",
+ "how": "change n and push: .github/workflows/freefix-test.yml -> v3/freefix_gh.py -> final/freefix_test.py on Kaggle (one Kaggle job at a time)"
+}

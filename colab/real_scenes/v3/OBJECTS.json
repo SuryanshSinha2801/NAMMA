@@ -1,0 +1,11 @@
+{
+ "n": 3,
+ "run": "20261026-0327",
+ "frames_dataset": "anasrazy/namma-dl3dv-389a460ca1-r2",
+ "nframes": 420,
+ "long": 1440,
+ "frames": 40,
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "dl3dv_res": "images_2",
+ "how": "change n and push: .github/workflows/objects.yml -> v3/objects_gh.py -> final/objects_job.py -> final/objects3d.py on Kaggle (one Kaggle job at a time); run = the room model to label (after run 6: its run id + frames dataset)"
+}

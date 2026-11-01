@@ -1,0 +1,28 @@
+# Screenshots of public web pages (and their demo tours) for the cloud session, which cannot reach most sites.
+# Start: change scripts/site_look/URLS.txt and push. Results: private HF dataset <user>/namma-v3-out/site_look/<time>/ + artifact.
+name: site look
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [scripts/site_look/URLS.txt]
+jobs:
+  look:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/site_look
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q playwright==1.49.1 huggingface_hub && python -m playwright install --with-deps chromium
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python scripts/site_look/look.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-look
+          path: out/
+          if-no-files-found: ignore

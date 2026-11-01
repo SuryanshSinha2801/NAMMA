@@ -1,0 +1,10 @@
+{
+ "n": 5,
+ "run": "20261026-0327",
+ "frames_dataset": "anasrazy/namma-dl3dv-389a460ca1-r2",
+ "nframes": 420,
+ "long": 1440,
+ "gguf": "qwen-image-edit-2511-Q4_K_M.gguf",
+ "steps": 4,
+ "how": "set n > 0 and push to start (.github/workflows/qwen-smoke.yml -> v3/qwen_gh.py -> final/qwen_smoke.py on Kaggle); only when no namma-v3 run is training"
+}

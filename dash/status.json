@@ -1,34 +1,42 @@
 {
- "updated": "2026-10-25 20:40 IST",
+ "updated": "2026-10-26 00:30 IST",
  "goal": "Phone video -> photoreal, walkable 3D of the REAL room. Real pixels first, 3D model for in-between views, generation only for holes (flagged). Free GPUs.",
- "now": "namma-all: a real handheld room video (Apple ARKitScenes) -> frames -> depth -> cameras -> check -> align -> model v2 (no needles) -> levelled .splat + viewer. ~75 min, one command.",
+ "now": "namma-v3 works: DL3DV hotel room (handheld phone, 411 frames) -> 29.5 dB held-out (exposure-fair), SSIM 0.945, photoreal held-out and off-path views. Next: owner re-films their room, same command. Hand-off: docs/HANDOFF_V3.md",
  "phases": [
   {
-   "name": "TOMORROW 26 Oct",
+   "name": "NOW: namma-v3 (final pipeline)",
    "steps": [
     [
-     "running",
-     "Pipeline on a properly captured real handheld room video (ARKitScenes, free) - namma-all, one command"
+     "done",
+     "namma-all (ARKitScenes) failed: Depth Anything 3 out of GPU memory on landscape frames -> 5/300 merged -> everything after failed"
+    ],
+    [
+     "done",
+     "Research + plan v3: drop the custom trainer and repair layers from the default path; use gsplat simple_trainer (what everyone with good results uses)"
+    ],
+    [
+     "done",
+     "v3 code: frames.py, sfm_hloc COLMAP export + camera report, v3/run.py (one command), v3_qa.py (QA sheet, pass/fail), tested on CPU with a synthetic room"
+    ],
+    [
+     "done",
+     "Owner: HF Agree + GitHub secrets (KAGGLE_TOKEN, HUGGINGFACE_WRITE_TOKEN); Kaggle now driven from GitHub Actions"
+    ],
+    [
+     "done",
+     "namma-v3 on DL3DV hotel room: cameras 411/411, full model 29.5 dB / SSIM 0.945 held-out, photoreal (QA tool fixed after)"
     ],
     [
      "todo",
-     "Owner: re-film the room per docs/CAPTURE_GUIDE.md (landscape, locked exposure, slow turns, one loop), upload to Kaggle"
+     "Owner: re-film the room per docs/CAPTURE_GUIDE.md, same command with SOURCE=kaggle"
     ],
     [
      "todo",
-     "Claude: one-command job for the whole pipeline (frames -> cameras -> check -> align -> depth -> model -> level -> viewer)"
+     "Step 6 (YouTube method): drone views, real pixels first, Wan fills only small gaps (flagged), retrain"
     ],
     [
      "todo",
-     "Model v2: no needles (anisotropy cap), 30 min, higher resolution, drone views from real pixels, unfilmed pixels masked"
-    ],
-    [
-     "todo",
-     "Claude checks renders (inside, off-path, outside, held-out) before the owner opens anything"
-    ],
-    [
-     "todo",
-     "Viewer: trained model between photo spots; Techfest R1 materials"
+     "VGGT-Long camera fallback if a video breaks apart in SfM; viewer integration; Techfest R1 materials"
     ]
    ]
   },

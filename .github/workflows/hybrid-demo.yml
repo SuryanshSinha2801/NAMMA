@@ -1,0 +1,37 @@
+# Hybrid 'solid room' demo on a finished run (CPU only, no Kaggle): room shell + furniture mesh textured from the real photos,
+# turned into a smear-free splat tour, compared with the splat model at the same views (v3/hybrid_gh.py -> final/hybrid_demo.py).
+# Start: change "n" in colab/real_scenes/v3/HYBRID.json and push. Results: hf://datasets/<user>/namma-v3-out/hybrid_demo/<time>/.
+name: hybrid demo
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/HYBRID.json]
+concurrency:
+  group: hybrid-demo
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+            scripts/site_look
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q huggingface_hub numpy pillow playwright==1.49.1 && python -m playwright install --with-deps chromium
+      - run: sudo apt-get install -y -q libegl1 libgl1 libgomp1 > /dev/null     # Open3D's shared libraries (ray casting only, no display)
+      - name: Hybrid model + tour
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/hybrid_gh.py
+      - name: Screenshots
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: |
+          sleep 90
+          python scripts/site_look/look.py

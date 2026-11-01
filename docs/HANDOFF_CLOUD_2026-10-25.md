@@ -1,3 +1,5 @@
+> **Superseded**: the current hand-off is `docs/HANDOFF_V3.md` (v3 pipeline, 26 Oct). This file is kept for history.
+
 # NAMMA: hand-off from the cloud session (2026-10-24 → 25)
 
 Read with: `docs/HANDOFF.md` (Mac session, 24 Oct), `docs/VIDEO_METHOD_PLAN.md` (plan), `colab/real_scenes/final/NOTES.md`

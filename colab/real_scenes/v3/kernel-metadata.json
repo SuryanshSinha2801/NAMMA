@@ -1,0 +1,3 @@
+{"id": "anasrazy/namma-v3", "title": "namma-v3", "code_file": "run.py", "language": "python", "kernel_type": "script",
+ "is_private": true, "enable_gpu": true, "enable_internet": true, "machine_shape": "NvidiaTeslaT4",
+ "kernel_sources": ["anasrazy/namma-prep"]}

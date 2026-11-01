@@ -1,0 +1,45 @@
+# Runs the namma-v3 Kaggle job from GitHub: the cloud session that writes the code cannot reach kaggle.com, GitHub's runners can.
+# Start: change "n" in colab/real_scenes/v3/RUN.json and push (or Actions tab > Run workflow, once this file is on main).
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   KAGGLE_TOKEN (or KAGGLE_API_TOKEN)  contents of ~/.kaggle/access_token
+#   HUGGINGFACE_WRITE_TOKEN (or HF_TOKEN)  Hugging Face write token of the account that clicked "Agree" on DL3DV/DL3DV-Benchmark
+# Results: private HF dataset <hf user>/namma-v3-out/<run> (QA sheet, metrics, .splat, .ply, walkthrough, log) + this run's artifact.
+name: namma-v3 on Kaggle
+
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/RUN.json]
+  workflow_dispatch:
+
+concurrency:
+  group: namma-v3
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
+      - name: Kaggle job (input -> push -> wait -> outputs)
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/gh_run.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: namma-v3-out
+          path: |
+            out/
+            !out/**/*.ply
+          if-no-files-found: ignore

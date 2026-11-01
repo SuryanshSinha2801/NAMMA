@@ -1,0 +1,33 @@
+# Qwen-Image-Edit-2511 smoke test on Kaggle (free T4): can the open image editor clean our splat renders? (v3/qwen_gh.py)
+# Start: change "n" in colab/real_scenes/v3/QWEN.json and push, when no namma-v3 Kaggle run is training.
+# Results: private HF dataset <user>/namma-v3-out/qwen_smoke/<time>/ (qwen_sheet.jpg, qwen_report.json, log).
+name: qwen smoke test
+
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/QWEN.json]
+
+concurrency:
+  group: qwen-smoke
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q kaggle==2.2.5 huggingface_hub
+      - name: Kaggle job (inputs -> push -> wait -> outputs)
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/qwen_gh.py

@@ -1,0 +1,16 @@
+{
+ "n": 12,
+ "collect": false,
+ "source": "dl3dv-video:389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "kaggle_user": "anasrazy",
+ "env": {
+  "STEPS": "50000",
+  "NFRAMES": "900",
+  "LONG": "1920",
+  "VARIANTS": "[[\"full\", 50000, 3000000, \"prior\"], [\"geo\", 50000, 3000000, \"prior+geo\"]]"
+ },
+ "scene": "DL3DV-Benchmark #44, Hotels-Motels: hotel room, the original phone video (DL3DV/DL3DV-ALL-video)",
+ "how": "change n (and source) and push to start a run: .github/workflows/namma-v3.yml -> gh_run.py",
+ "note": "run 6: the original video (900 sharpest frames instead of DL3DV's 411), 1920 px, 3M splats, 50k steps; A/B: room prior vs room prior + Depth Anything 3 depth/surface guide (final/geo_prior.py) against smudged walls and floaters",
+ "dl3dv_res": "images_2"
+}
