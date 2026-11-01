@@ -1,0 +1,36 @@
+{
+ "about": "Fixed settings for every video from the app's inbox (v3/inbox.py, .github/workflows/inbox.yml). best = run 4's recipe exactly (the owner's best: ~420 frames, 1440 px, 30k steps, 1.5M splats); run 6 (900 frames, 1920 px, 40k, 3M) looked worse to the owner (28 Oct). quick = a short test run (end-to-end check, not for viewing). Since 1 Nov 'best' and 'home' size every run from the video itself (AUTO_STEPS): frames by walking time (run 4's 411 frames per 123 s, at most 1,000), splats by floor area (run 4's 1.5 M per 37 m2, 1.5-4 M), steps by training views (83.6 each), plus run 4's 2DGS geometry model for walk collision; a full-size dry run measures speed and memory first and the job only starts what fits in Kaggle's time.",
+ "default": "best",
+ "kernel": "namma-job",
+ "other_kernels": [
+  "namma-fixer",
+  "namma-flashworld",
+  "namma-v3",
+  "namma-world"
+ ],
+ "presets": {
+  "best": {
+   "env": {
+    "AUTO_STEPS": "1",
+    "NFRAMES": "auto",
+    "LONG": "1440"
+   }
+  },
+  "quick": {
+   "env": {
+    "STEPS": "3000",
+    "NFRAMES": "150",
+    "LONG": "960",
+    "VARIANTS": "[[\"full\", 3000, 300000]]"
+   }
+  },
+  "home": {
+   "env": {
+    "AUTO_STEPS": "1",
+    "NFRAMES": "auto",
+    "LONG": "1440"
+   },
+   "note": "same rules as best (sized from the video); kept as a name the app may send"
+  }
+ }
+}

@@ -7,9 +7,14 @@ from playwright.sync_api import sync_playwright
 OUT = 'out'; os.makedirs(OUT, exist_ok=True); MAX_TOURS = int(os.environ.get('MAX_TOURS', 4))
 urls = [u.strip() for u in open(os.path.join(os.path.dirname(__file__), 'URLS.txt')) if u.strip() and not u.startswith('#')]
 log = {}; SECRET = None
+for u in list(urls):                     # URLS.txt line 'namma <run> [url file]': one of our own tours (link stays private)
+    m = re.fullmatch(r'namma (\S+)(?: (\S+))?', u)
+    if m:
+        urls.remove(u)
+        if not os.environ.get('TOUR_RUN'): os.environ['TOUR_RUN'] = m.group(1); os.environ['TOUR_URL_NAME'] = m.group(2) or ''   # the caller's tour wins
 if os.environ.get('TOUR_RUN'):           # our own tour: link read from the private results dataset, never printed (public logs)
     from huggingface_hub import hf_hub_download
-    t = open(hf_hub_download('anasrazy/namma-v3-out', f"{os.environ['TOUR_RUN']}/tour_url.txt", repo_type='dataset', token=os.environ['HF_TOKEN'])).read().strip()
+    t = open(hf_hub_download('anasrazy/namma-v3-out', f"{os.environ['TOUR_RUN']}/{os.environ.get('TOUR_URL_NAME') or 'tour_url.txt'}", repo_type='dataset', token=os.environ['HF_TOKEN'])).read().strip()
     SECRET = t.split('/')[-2]; urls = ['tour ' + t + '?webgl']
 hide = lambda x: x.replace(SECRET, '<folder>') if SECRET else x
 
@@ -21,11 +26,134 @@ def shot(page, name):
     try: print('camera', name, page.evaluate(CAM), flush=True)                             # PlayCanvas viewers: where are we?
     except Exception as e: print('camera unknown', name, str(e)[:80], flush=True)
 
+HIDE_UI = """(on) => { for (const e of document.querySelectorAll('body *')) {
+  if (e.tagName === 'CANVAS' || e.querySelector('canvas')) continue;
+  if (on) { e.dataset.nmVis = e.style.visibility; e.style.visibility = 'hidden'; } else if ('nmVis' in e.dataset) { e.style.visibility = e.dataset.nmVis; delete e.dataset.nmVis; } } }"""
+
+
+def still(page, timeout_s=90):
+    """Wait until the camera stops moving (fly-overs between rooms are slow under software WebGL): 3 equal polls 1 s apart."""
+    last, same, t0 = None, 0, time.time()
+    while time.time() - t0 < timeout_s:
+        try: c = page.evaluate(CAM)
+        except Exception: c = None
+        same = same + 1 if c is not None and last is not None and max(abs(a - b) for a, b in zip(c, last)) < 1e-3 else 0
+        if same >= 3: return c
+        last = c; page.wait_for_timeout(1000)
+    return last
+
+
+def arrive(page, pos, timeout_s=180):
+    """Wait until the camera is at pos (the spot's camera, room coordinates = the viewer's) and has stopped there. Under software
+    WebGL the first frames after a jump can take seconds, so 'not moving' alone is caught before the move starts (1 Nov)."""
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        try: c = page.evaluate(CAM)
+        except Exception: c = None
+        if c is not None and sum((a - b) ** 2 for a, b in zip(c, pos)) ** 0.5 < 0.05: return still(page, 20)
+        page.wait_for_timeout(1000)
+    return None
+
+
+def view_shot(page, path):
+    """The 3D view alone (our UI and the viewer's hidden for the shot), as a PIL image."""
+    from PIL import Image
+    import io
+    page.evaluate(HIDE_UI, True); page.wait_for_timeout(1500)
+    try: b = page.screenshot(type='jpeg', quality=85, timeout=240000)
+    finally: page.evaluate(HIDE_UI, False)
+    open(path, 'wb').write(b); return Image.open(io.BytesIO(b)).convert('RGB')
+
+
+def match(view, thumb, fv, ff):
+    """How well the view shows what its spot photo shows: correlation of the blurred grey images over the part of the scene both
+    cover (fv = the view's horizontal fov, ff = the photo's; the window and the photo have different shapes). Calibrated 1 Nov:
+    views that showed their photo 0.78-0.99 (house + graded hotel), views inside furniture / blurred -0.02-0.39."""
+    from PIL import ImageFilter
+    import numpy as np
+    W, H = view.size; tw, th = thumb.size
+    txv = np.tan(np.radians(fv) / 2); tyv = txv * H / W; txf = np.tan(np.radians(ff) / 2); tyf = txf * th / tw
+    ox, oy = min(txv, txf), min(tyv, tyf)
+    cc = lambda im, fx, fy: im.crop((int(im.size[0] / 2 * (1 - fx)), int(im.size[1] / 2 * (1 - fy)), int(im.size[0] / 2 * (1 + fx)), int(im.size[1] / 2 * (1 + fy))))
+    pr = lambda im: np.asarray(im.convert('L').resize((110, 70)).filter(ImageFilter.GaussianBlur(1)), np.float32)
+    a, b = pr(cc(view, ox / txv, oy / tyv)), pr(cc(thumb, ox / txf, oy / tyf)); a, b = a - a.mean(), b - b.mean()
+    return float((a * b).sum() / np.sqrt((a * a).sum() * (b * b).sum() + 1e-9))
+
+
+def sharp(im):
+    import numpy as np
+    g = np.asarray(im.convert('L').resize((480, 300)), np.float32) / 255
+    return float(np.abs(np.diff(g, axis=0)).mean() + np.abs(np.diff(g, axis=1)).mean())
+
+
+def assert_tour(page, url, rec, k):
+    """ASSERT=1 (our tours, after every publish): fail = the publish is rolled back (tour_publish.py --verify).
+    Loaded, no script errors, viewer code present; every spot's view matches its real photo; walk mode at every spot is not blurred."""
+    from PIL import Image
+    import io, numpy as np
+    fails, warns = [], []; base = url.split('index.html')[0]; get = lambda f: page.request.get(base + f, timeout=60000)   # fails roll the publish back; warnings are reported (not worse than before)
+    if rec.get('load_wait_error'): fails.append(f"the room did not load in {int(os.environ.get('LOAD_WAIT_S', 600)) // 60} min")
+    if rec.get('page_errors'): fails.append('script errors: ' + '; '.join(rec['page_errors'][:3]))
+    try:
+        js = get('index.js'); n = len(js.body()) if js.ok else 0
+        if n < 1_000_000: fails.append(f'viewer code index.js is {n} bytes')
+    except Exception as e: fails.append('index.js: ' + str(e)[:80])
+    try:                                                                                  # walk collision: a real mesh, not just the room box
+        cg = get('collision.glb'); n = len(cg.body()) if cg.ok else 0; rec['collision_bytes'] = n
+        if n < 100_000: warns.append(f'walk collision is only the room box / walls ({n} bytes): no room mesh')
+    except Exception as e: fails.append('collision.glb: ' + str(e)[:80])
+    spots = []
+    try:
+        st = get('settings.json').json(); ti = get('tour.json').json() if get('tour.json').ok else {}
+        ov = get('overlay.json').json() if get('overlay.json').ok else {'spots': []}
+        for i, sp in enumerate(ov.get('spots', [])):
+            th = Image.open(io.BytesIO(get(sp['thumb']).body())).convert('RGB'); aspect = th.size[0] / th.size[1]
+            fv = st['annotations'][i]['camera']['initial']['fov']                                  # the viewer: horizontal on landscape
+            ff = fv if ti.get('fov_kind') == 'horizontal' else np.degrees(2 * np.arctan(np.tan(np.radians(fv) / 2) * aspect))   # the frame
+            page.evaluate(f'window.viewer.selectAnnotation({i})'); cam = arrive(page, st['annotations'][i]['camera']['initial']['position'])
+            if cam is None: fails.append(f'spot {i + 1}: the camera never arrived at the spot'); continue
+            v = view_shot(page, f'{OUT}/tour{k}_v{i + 1}.jpg'); m = match(v, th, fv, ff)
+            r = dict(spot=i + 1, match=round(m, 3), camera=cam)
+            if m < 0.6: fails.append(f"spot {i + 1}: the view does not show its photo (match {m:.2f} < 0.6)")
+            try:                                                                            # walk mode right there
+                page.evaluate("window.viewer.toggleWalk ? window.viewer.toggleWalk() : (window.viewer.state.cameraMode = 'walk')")
+                still(page, 40); w = view_shot(page, f'{OUT}/tour{k}_w{i + 1}.jpg'); ratio = sharp(w) / max(sharp(v), 1e-6)
+                r.update(walk_sharp=round(ratio, 2), walk_mode=page.evaluate('window.viewer.state.cameraMode'))
+                if ratio < 0.5: warns.append(f'spot {i + 1}: walk view blurred ({ratio:.2f} of the spot view): camera inside geometry?')   # broken 0.32-0.38, good >= 0.71
+            except Exception as e: r['walk_error'] = str(e)[:120]
+            page.evaluate("window.viewer.state.cameraMode = 'orbit'"); spots.append(r); print('ASSERT spot', r, flush=True)
+    except Exception as e: fails.append('spot check could not run: ' + str(e)[:150])
+    res = dict(ok=not fails, fails=fails, warnings=warns, spots=spots); rec['assert'] = res
+    json.dump(res, open(f'{OUT}/assert.json', 'w'), indent=1); print('ASSERT', json.dumps(res), flush=True)
+
+
 def visit_tour(ctx, url, k):
-    page = ctx.new_page(); rec = dict(url=url, requests=[])
+    page = ctx.new_page(); rec = dict(url=url, requests=[], page_errors=[])
+    page.on('pageerror', lambda e: rec['page_errors'].append(str(e)[:160]))
     page.on('request', lambda r: rec['requests'].append(r.url) if re.search(r'\.(sog|splat|ply|spz|ksplat|json|webp|jpg)(\?|$)', r.url) else None)
     try:
-        page.goto(url, wait_until='domcontentloaded', timeout=60000); page.wait_for_timeout(45000); shot(page, f'tour{k}_a_loaded')
+        page.goto(url, wait_until='domcontentloaded', timeout=60000); page.wait_for_timeout(15000); shot(page, f'tour{k}_0_loading')
+        t0 = time.time()                                                                  # until the viewer reports the scene in (max 10 min)
+        try: page.wait_for_function('window.viewer && window.viewer.state && window.viewer.state.loaded', timeout=int(os.environ.get('LOAD_WAIT_S', 600)) * 1000)
+        except Exception as e: rec['load_wait_error'] = str(e)[:200]
+        rec['loaded_after_s'] = round(15 + time.time() - t0); print('loaded after', rec['loaded_after_s'], 's', flush=True)
+        page.wait_for_timeout(3000); shot(page, f'tour{k}_a_loaded')
+        if os.environ.get('ASSERT') == '1': assert_tour(page, url, rec, k)
+        try:                                                                              # our overlay: controls card, floor plan 2D / 3D
+            # software WebGL renders a real scene at a few frames/s, so Playwright's 'stable element' wait can need long
+            if page.locator('#nm-hgo').is_visible(): page.click('#nm-hgo', timeout=30000)
+            if page.locator('#nm-exp').count():
+                page.click('#nm-exp', timeout=30000); page.wait_for_timeout(1500); shot(page, f'tour{k}_a2_plan2d')
+                page.click('#nm-fp .tog button[data-m="3d"]', timeout=30000); page.wait_for_timeout(1500); shot(page, f'tour{k}_a3_plan3d')
+                page.click('#nm-fpx', timeout=30000); page.wait_for_timeout(500)
+            if page.locator('.sse-settings').count():                                     # gear: eye height row on top
+                page.click('.sse-settings', timeout=30000, force=True); page.wait_for_timeout(1500); shot(page, f'tour{k}_a4_settings')
+                rec['eye_row'] = page.locator('#nm-eyegrp').count(); page.click('.sse-settings', timeout=30000, force=True)
+        except Exception as e: rec['overlay_error'] = str(e)[:200]
+        try:                                                                              # every spot as a visitor sees it (photo bar)
+            for i in range(page.locator('#nm-strip button').count()):
+                page.locator('#nm-strip button').nth(i).click(timeout=30000, force=True); page.wait_for_timeout(int(os.environ.get('SPOT_WAIT_MS', 30000))); shot(page, f'tour{k}_s{i + 1}')   # software WebGL: the fly-over to a far spot takes long
+        except Exception as e: rec['spots_error'] = str(e)[:200]
         W, H = page.viewport_size['width'], page.viewport_size['height']
         page.mouse.move(W / 2, H / 2); page.mouse.down(); page.mouse.move(W / 2 + 300, H / 2, steps=20); page.mouse.up(); page.wait_for_timeout(4000)
         shot(page, f'tour{k}_b_turned')

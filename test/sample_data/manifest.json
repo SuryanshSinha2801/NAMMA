@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "purpose": "NAMMA Round 1 pipeline smoke-test sample; not the team's own-home evaluation capture.",
+  "files": [
+    {
+      "path": "lobby_clip30.mp4",
+      "bytes": 33960786,
+      "git_blob_sha1": "14ef0874a49c8f30dfc6cd4606397a06510f5e05",
+      "existing_repository_path": "colab/real_scenes/videos/lobby_clip30.mp4",
+      "purpose": "Short indoor lobby video used to validate video ingestion and reconstruction stages.",
+      "licence_status": "No separate licence statement is recorded for this MP4 in the repository; confirm reuse rights before redistribution."
+    }
+  ],
+  "recommended_sample_run": {
+    "config": "test/RUN.sample.json",
+    "frames": 120,
+    "max_image_long_side_px": 960,
+    "appearance_steps": 3000,
+    "geometry_steps": 3000,
+    "note": "Smoke-test settings only; not intended to produce the final high-fidelity model."
+  }
+}

@@ -1,0 +1,38 @@
+# NAMMA World v1 (Plan B): one photo -> a 360-degree 3D world by "drones" (final/world_v1.py) on Kaggle's free T4
+# (v3/world_gh.py -> final/world_job.py), then the viewers are published and screenshotted. Start: change "n" in
+# colab/real_scenes/v3/WORLD.json and push, when no other Kaggle job is running. Results: hf://datasets/<user>/namma-v3-out/world/<time>/.
+name: world
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/WORLD.json]
+concurrency:
+  group: world
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+            scripts/site_look
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q kaggle==2.2.5 six huggingface_hub numpy pillow opencv-python-headless playwright==1.49.1 && python -m playwright install --with-deps chromium
+      - name: Kaggle world job + viewers
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/world_gh.py
+      - name: Screenshots
+        if: env.TOUR_RUN != ''
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: |
+          sleep 90
+          python scripts/site_look/look.py

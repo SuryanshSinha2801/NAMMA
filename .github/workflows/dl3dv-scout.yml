@@ -1,0 +1,21 @@
+# Whole-home video search in DL3DV (v3/dl3dv_scout.py), CPU only. Start: change "n" in colab/real_scenes/v3/SCOUT.json and push.
+name: dl3dv-scout
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/SCOUT.json]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: colab/real_scenes/v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get -qq update && sudo apt-get -qq install -y ffmpeg && pip install -q huggingface_hub imageio-ffmpeg pillow requests
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/dl3dv_scout.py

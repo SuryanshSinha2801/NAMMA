@@ -61,9 +61,22 @@ def main(examples, data, result, out):
     det = []
     for tl in tiles:
         g, m_ = tl[:, :tl.shape[1] // 2], tl[:, tl.shape[1] // 2:]; c = min(480, g.shape[0], g.shape[1])
-        e = np.abs(np.diff(g.mean(2), axis=0))[:, :-1] + np.abs(np.diff(g.mean(2), axis=1))[:-1]       # texture energy
-        ii = np.cumsum(np.cumsum(np.pad(e, ((1, 0), (1, 0))), 0), 1); y, x = np.meshgrid(np.arange(0, e.shape[0] - c, 16), np.arange(0, e.shape[1] - c, 16), indexing='ij')
-        tot = ii[y + c, x + c] - ii[y, x + c] - ii[y + c, x] + ii[y, x]; y0, x0 = y.flat[tot.argmax()], x.flat[tot.argmax()]
+        # Small/portrait test frames can be exactly 480 px on one side. The old
+        # range(0, e_dim - c, 16) then produced no candidates and argmax crashed,
+        # aborting the QA stage before model.ply/model.splat were exported.
+        if g.shape[0] <= c or g.shape[1] <= c:
+            y0, x0 = max(0, (g.shape[0] - c) // 2), max(0, (g.shape[1] - c) // 2)
+        else:
+            e = np.abs(np.diff(g.mean(2), axis=0))[:, :-1] + np.abs(np.diff(g.mean(2), axis=1))[:-1]  # texture energy
+            c = min(c, e.shape[0], e.shape[1])
+            ii = np.cumsum(np.cumsum(np.pad(e, ((1, 0), (1, 0))), 0), 1)
+            ys = np.arange(0, e.shape[0] - c + 1, 16); xs = np.arange(0, e.shape[1] - c + 1, 16)
+            if ys.size and xs.size:
+                y, x = np.meshgrid(ys, xs, indexing='ij')
+                tot = ii[y + c, x + c] - ii[y, x + c] - ii[y + c, x] + ii[y, x]
+                best = int(tot.argmax()); y0, x0 = int(y.flat[best]), int(x.flat[best])
+            else:
+                y0, x0 = max(0, (g.shape[0] - c) // 2), max(0, (g.shape[1] - c) // 2)
         det.append(np.concatenate([g[y0:y0 + c, x0:x0 + c], m_[y0:y0 + c, x0:x0 + c]], 1))
     Image.fromarray((np.concatenate(det, 0) * 255).astype(np.uint8)).save(f'{out}/qa_detail.jpg', quality=92)
     up = camera_up(C); pts = p.points

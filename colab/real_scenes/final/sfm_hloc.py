@@ -11,7 +11,7 @@ frames, out = Path(sys.argv[1]), Path(sys.argv[2]); out.mkdir(parents=True, exis
 SEQ = int(sys.argv[3]) if len(sys.argv) > 3 else 10; RET = int(sys.argv[4]) if len(sys.argv) > 4 else 15
 CAM = sys.argv[5] if len(sys.argv) > 5 else 'PINHOLE'
 names = sorted(p.name for p in frames.glob('*.jpg'))
-fc, mc, rc = extract_features.confs['superpoint_max'], match_features.confs['superpoint+lightglue'], extract_features.confs['netvlad']
+fc, mc, rc = extract_features.confs['aliked-n16'], match_features.confs['aliked+lightglue'], extract_features.confs['netvlad']   # ALIKED (BSD-3): SuperPoint's weights are non-commercial
 pairs = {(names[i], names[j]) for i in range(len(names)) for j in range(i + 1, min(len(names), i + SEQ + 1))}
 if RET:
     ret = extract_features.main(rc, frames, out)

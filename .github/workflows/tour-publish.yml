@@ -13,7 +13,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,14 +24,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -q huggingface_hub numpy scipy pillow plyfile trimesh fast-simplification playwright==1.49.1 && python -m playwright install --with-deps chromium
+      - run: pip install -q huggingface_hub numpy scipy pillow plyfile trimesh fast-simplification opencv-python-headless playwright==1.49.1 && python -m playwright install --with-deps chromium
       - name: Publish
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
-        run: python colab/real_scenes/v3/tour_publish.py $(python -c "import json;c=json.load(open('colab/real_scenes/v3/PUBLISH.json'));print(c['run'], *[k for k in ('floorplan', 'collision') if c.get(k)])")
+        run: |
+          eval "$(python -c "import json;c=json.load(open('colab/real_scenes/v3/PUBLISH.json'));print(f'export TOUR_MODEL={c[\"model\"]}' if c.get('model') else '');print(f'export TOUR_SH={c[\"sh\"]}' if 'sh' in c else '');print(f'export INBOX_JOB={c[\"inbox_job\"]}' if c.get('inbox_job') else '');print('export TOUR_PRUNE=1' if c.get('prune') else '');print('export TOUR_KEEP=' + ','.join(c.get('keep', [])));[print(f'export {k}={c[j]}') for j, k in (('format', 'TOUR_FORMAT'), ('dst', 'TOUR_DST'), ('url_name', 'TOUR_URL_NAME'), ('lod_levels', 'TOUR_LOD_LEVELS'), ('folder', 'TOUR_FOLDER')) if c.get(j)]")"
+          python colab/real_scenes/v3/tour_publish.py $(python -c "import json;c=json.load(open('colab/real_scenes/v3/PUBLISH.json'));print(c['run'], *[k for k in ('floorplan', 'collision', 'rebuild', 'head', 'respot') if c.get(k)])")
       - name: Screenshots
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
         run: |
           sleep 90
-          TOUR_RUN="$(python -c "import json;print(json.load(open('colab/real_scenes/v3/PUBLISH.json'))['run'])")" python scripts/site_look/look.py
+          TOUR_URL_NAME="$(python -c "import json;print(json.load(open('colab/real_scenes/v3/PUBLISH.json')).get('url_name', ''))")" TOUR_RUN="$(python -c "import json;print(json.load(open('colab/real_scenes/v3/PUBLISH.json'))['run'])")" python scripts/site_look/look.py

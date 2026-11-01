@@ -1,0 +1,9 @@
+{
+ "n": 5,
+ "scenes": [
+  {"name": "zipnerf-berlin", "repo": "nvs-bench/zipnerf", "sparse": "berlin/sparse/0", "images": "berlin/images"},
+  {"name": "zipnerf-alameda", "repo": "nvs-bench/zipnerf", "sparse": "alameda/sparse/0", "images": "alameda/images"},
+  {"name": "run4-hotel", "repo": "anasrazy/namma-v3-out", "sparse": "20261026-0327/sparse/0", "images": ""}
+ ],
+ "how": "room finding check (v3/rooms_gh.py, final/rooms.py): change n and push"
+}

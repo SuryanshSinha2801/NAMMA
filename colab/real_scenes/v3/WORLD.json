@@ -1,0 +1,36 @@
+{
+ "n": 3,
+ "run": "20261026-0327",
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "dl3dv_res": "images_2",
+ "nframes": 420,
+ "long": 1440,
+ "long_px": 1024,
+ "prompt": "interior photo of a hotel room, walls, floor and ceiling",
+ "samples": [
+  {
+   "name": "bed_view",
+   "frame": 120,
+   "offsets": "-45,-24,-12,-6,6,12,24,45"
+  },
+  {
+   "name": "sofa_view",
+   "frame": 300,
+   "offsets": "-45,-24,-12,-6,6,12,24,45"
+  }
+ ],
+ "depth_model": "Ruicheng/moge-2-vitl-normal",
+ "inpaint_model": "OzzyGT/RealVisXL_V4.0_inpainting",
+ "lcm": true,
+ "steps": 8,
+ "guidance": 1.5,
+ "drone_px": 1024,
+ "drone_step": 6,
+ "walk_m": 1.0,
+ "collect": false,
+ "how": "Plan B v1 (NAMMA World, drones on Kaggle T4): one frame -> 360-degree world, scored against the real neighbouring frames. Change n and push (one Kaggle job at a time); collect=true only re-collects a running Kaggle job",
+ "room_box": true,
+ "controlnet": "diffusers/controlnet-depth-sdxl-1.0-small",
+ "cn_scale": 0.6,
+ "room_prompt": "the same hotel room continued, plain walls, carpet floor and white ceiling, same materials and lighting"
+}

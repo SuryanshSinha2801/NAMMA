@@ -1,0 +1,23 @@
+# Room finding on real captures, CPU only (per-room plan of 30 Oct). Start: change "n" in colab/real_scenes/v3/ROOMS.json and push.
+name: rooms
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/ROOMS.json]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q huggingface_hub numpy scipy scikit-image pillow networkx "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e" && sed -i "s/np.uint64(-1)/np.uint64(np.iinfo(np.uint64).max)/" $(python -c "import importlib.util as u; print(u.find_spec('pycolmap').submodule_search_locations[0])")/scene_manager.py
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/rooms_gh.py

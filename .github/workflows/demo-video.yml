@@ -1,0 +1,21 @@
+# Whole-home test video into the app inbox (v3/demo_video.py). Start: change "n" in colab/real_scenes/v3/DEMO_VIDEO.json and push.
+name: demo-video
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/DEMO_VIDEO.json]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: colab/real_scenes/v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q huggingface_hub imageio-ffmpeg
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/demo_video.py

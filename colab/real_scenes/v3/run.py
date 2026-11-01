@@ -16,7 +16,8 @@
 import glob, json, os, shutil, subprocess, sys, time
 T0 = time.time(); W = '/kaggle/temp/v3'; O = '/kaggle/working'; os.makedirs(W, exist_ok=True)
 SOURCE = os.environ.get('SOURCE', 'dl3dv:auto')
-NFRAMES, LONG = int(os.environ.get('NFRAMES', 300)), int(os.environ.get('LONG', 1280))   # what a T4 trains in ~1 h
+NF = os.environ.get('NFRAMES', '300'); NFRAMES, LONG = (int(NF) if NF.isdigit() else 300), int(os.environ.get('LONG', 1280))   # what a T4 trains in ~1 h
+PREP_ONLY = os.environ.get('PREP_ONLY') == '1'                                            # whole-house pre-check: frames, cameras, gate; no training
 FULL, PREVIEW = int(os.environ.get('STEPS', 30000)), int(os.environ.get('PREVIEW', 7000))
 CAP_FULL, CAP_PREVIEW = 1_500_000, 1_000_000                                               # MCMC splat budget
 # models to train, [name, steps, splat cap(, '2dgs')]; the first two run at once on the two T4s, the rest after. 'full' is the
@@ -32,6 +33,11 @@ def sh(c, check=False):
 
 def say(*a): print(f'[{time.time()-T0:5.0f}s]', *a, flush=True)
 
+# no GPU = hours of CPU work that can never finish (30 Oct: a new account's run got no accelerator and ran 6 h on CPU): stop now
+_g = subprocess.run('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader', shell=True, capture_output=True, text=True)
+say('GPUs:', _g.stdout.strip().replace('\n', ' | ') or 'none')
+if _g.returncode or not _g.stdout.strip():
+    raise SystemExit('NO GPU in this Kaggle session (account not phone-verified, or no GPU quota left): stopping before any work')
 sh(f'git clone -q --depth 1 -b claude/wonderful-cori-i3fn41 https://github.com/RazyAnas/NAMMA {W}/repo', check=True)
 F = f'{W}/repo/colab/real_scenes/final'; sys.path.insert(0, F)
 sh('ls /kaggle/input /kaggle/input/* | head -30')
@@ -114,23 +120,66 @@ def attached(name):
 
 # 1 frames
 import frames
-src = source(); say('source', src)
-n = frames.from_images(src, f'{D}/images', NFRAMES, LONG) if os.path.isdir(src) else frames.from_video(src, f'{D}/images', NFRAMES, LONG)
-if n < 20 and not os.path.isdir(src):                                                       # e.g. 4K HEVC OpenCV cannot decode:
-    say('only', n, 'frames decoded; converting the video with ffmpeg first')                 # H.264 at the training size
-    sh(f'ffmpeg -v error -y -i "{src}" -vf "scale=\'if(gt(iw,ih),{LONG},-2)\':\'if(gt(iw,ih),-2,{LONG})\'" -c:v libx264 -crf 14 -preset veryfast {W}/video.mp4')
-    shutil.rmtree(f'{D}/images', ignore_errors=True); n = frames.from_video(f'{W}/video.mp4', f'{D}/images', NFRAMES, LONG)
-say(n, 'frames ->', f'{D}/images'); assert n >= 20, f'only {n} frames from {src}'
+REUSE = os.environ.get('REUSE') == '1'      # plan of 31 Oct: an earlier run's frames + camera model (its Kaggle output, attached by
+                                            # gh_run as a kernel source): no decode, no camera solve; THIN = keep every k-th frame
+R0 = None
 
-# 2 cameras (same hloc venv that solved 574/578 frames of the 22 Oct video)
-E = f'{W}/sfmenv/bin/python'; P = f'--python {E}'
-sh(f'pip -q install uv 2>&1 | tail -1; unset UV_SYSTEM_PYTHON UV_PYTHON PIP_TARGET; uv venv -q -p 3.10 {W}/sfmenv && '
-   f'uv pip install -q {P} torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu118 > {W}/sfm_pip.log 2>&1; '
-   f'git clone -q --recursive https://github.com/cvg/Hierarchical-Localization {W}/hloc && '
-   f'uv pip install -q {P} "numpy<2" -e {W}/hloc "lightglue @ git+https://github.com/cvg/LightGlue" >> {W}/sfm_pip.log 2>&1; tail -3 {W}/sfm_pip.log')
-sh(f'{E} -c "import hloc, lightglue, pycolmap; print(\'hloc ok, pycolmap\', pycolmap.__version__)"', check=True)
-sh(f'cd {W} && {E} {F}/sfm_hloc.py {D}/images {W}/sfm 10 15 SIMPLE_RADIAL 2>&1 | grep -v "it/s" | grep -v "s/it" | tail -25')
-assert os.path.exists(f'{W}/sfm/sfm/images.bin'), 'camera solve failed: no COLMAP model (see the hloc log above)'
+def take(k):
+    """The reused camera model thinned to every k-th frame (final/thin_model.py, COLMAP's own file format) + those frames."""
+    shutil.rmtree(f'{W}/sfm/sfm', ignore_errors=True); shutil.rmtree(f'{D}/images', ignore_errors=True); os.makedirs(f'{W}/sfm', exist_ok=True)
+    r = subprocess.run([sys.executable, f'{F}/thin_model.py', f'{R0}/sparse/0', f'{W}/sfm/sfm', str(k), f'{W}/kept.txt'], capture_output=True, text=True)
+    assert r.returncode == 0, 'thin_model failed: ' + (r.stderr or r.stdout)[-800:]
+    info = json.loads(r.stdout.strip().splitlines()[-1]); os.makedirs(f'{D}/images', exist_ok=True)
+    for nm in open(f'{W}/kept.txt').read().split(): shutil.copy(f'{R0}/images/{nm}', f'{D}/images/{nm}')
+    rep_ = dict(frames=info['images'], registered=info['images'], points=info['points'], models=1, frames_without_points=info['frames_without_points'],
+                reused=R0, thin=k, images_in=info['images_in'], points_in=info['points_in'])
+    json.dump(rep_, open(f'{W}/sfm/sfm_report.json', 'w')); say('reused cameras, every', k, 'th frame:', rep_); return rep_
+
+if REUSE:
+    hits = glob.glob('/kaggle/input/**/sparse/0/images.bin', recursive=True); assert hits, 'REUSE: no sparse/0/images.bin under /kaggle/input'
+    R0 = os.path.dirname(os.path.dirname(os.path.dirname(hits[0]))); assert os.path.isdir(f'{R0}/images'), f'REUSE: no images/ in {R0}'
+    t_fr = t_sfm = time.time(); VTOT = 0; frames_min = sfm_min = 0.0; n = take(int(os.environ.get('THIN', '1')))['frames']
+else:
+    src = source(); say('source', src)
+    VTOT = 0
+
+    def plan_frames(v):
+        """NFRAMES=auto: run 4's density (411 frames from 7398 video frames, one per 18) for any video length."""
+        global NFRAMES, VTOT
+        import cv2; cap_ = cv2.VideoCapture(v); VTOT = int(cap_.get(cv2.CAP_PROP_FRAME_COUNT)); fps = cap_.get(cv2.CAP_PROP_FPS) or 30
+        # run 4's density by walking time (411 frames in 123 s), never more than the camera solve handles in its proven range
+        # (31 Oct: 3,470 frames took 7.6 h of SfM and broke into 4 pieces; runs 4 / 6 solved 411 / 900 in minutes)
+        if NF.startswith('auto') and VTOT > 0: NFRAMES = max(50, min(int(os.environ.get('SFM_MAX', 1000)), round(VTOT / fps * 411 / 123.3)))
+        say('video frames', VTOT, '-> frames to extract', NFRAMES)
+
+    t_fr = time.time()
+    if not os.path.isdir(src): plan_frames(src)
+    if os.path.isdir(src): n = frames.from_images(src, f'{D}/images', NFRAMES, LONG)
+    else:                                                                                      # ffmpeg on all cores; OpenCV if that fails
+        try: n = frames.from_video_fast(src, f'{D}/images', NFRAMES, LONG, VTOT)
+        except Exception as e: say('fast frame reader failed:', str(e)[:200]); n = 0
+        if n < 20: shutil.rmtree(f'{D}/images', ignore_errors=True); n = frames.from_video(src, f'{D}/images', NFRAMES, LONG)
+    if n < 20 and not os.path.isdir(src):                                                       # e.g. 4K HEVC OpenCV cannot decode:
+        say('only', n, 'frames decoded; converting the video with ffmpeg first')                 # H.264 at the training size
+        sh(f'ffmpeg -v error -y -i "{src}" -vf "scale=\'if(gt(iw,ih),{LONG},-2)\':\'if(gt(iw,ih),-2,{LONG})\'" -c:v libx264 -crf 14 -preset veryfast {W}/video.mp4')
+        plan_frames(f'{W}/video.mp4'); shutil.rmtree(f'{D}/images', ignore_errors=True); n = frames.from_video(f'{W}/video.mp4', f'{D}/images', NFRAMES, LONG)
+    say(n, 'frames ->', f'{D}/images'); assert n >= 20, f'only {n} frames from {src}'
+    t_sfm = time.time(); frames_min = round((t_sfm - t_fr) / 60, 1)
+
+    # 2 cameras (same hloc venv that solved 574/578 frames of the 22 Oct video)
+    E = f'{W}/sfmenv/bin/python'; P = f'--python {E}'
+    sh(f'pip -q install uv 2>&1 | tail -1; unset UV_SYSTEM_PYTHON UV_PYTHON PIP_TARGET; uv venv -q -p 3.10 {W}/sfmenv && '
+       f'uv pip install -q {P} torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu118 > {W}/sfm_pip.log 2>&1; '
+       f'git clone -q --recursive https://github.com/cvg/Hierarchical-Localization {W}/hloc && '
+       f'uv pip install -q {P} "numpy<2" -e {W}/hloc "lightglue @ git+https://github.com/cvg/LightGlue" >> {W}/sfm_pip.log 2>&1; tail -3 {W}/sfm_pip.log')
+    sh(f'{E} -c "import hloc, lightglue, pycolmap; print(\'hloc ok, pycolmap\', pycolmap.__version__)"', check=True)
+    # live in the Kaggle log (a `| tail` here held every line back until the end: the 30 Oct house run looked stuck for hours)
+    sh(f'cd {W} && PYTHONUNBUFFERED=1 {E} {F}/sfm_hloc.py {D}/images {W}/sfm 10 15 SIMPLE_RADIAL 2>&1 | tee {W}/sfm.log '
+       f'| grep --line-buffered -v -E "it/s|s/it" | while IFS= read -r l; do echo "[$(date -u +%H:%M:%S)] $l"; done')
+    assert os.path.exists(f'{W}/sfm/sfm/images.bin'), 'camera solve failed: no COLMAP model (see the hloc log above)'
+    sfm_min = round((time.time() - t_sfm) / 60, 1)
+    try: shutil.copytree(f'{W}/sfm', f'{O}/sfm_work', dirs_exist_ok=True); shutil.copy(f'{W}/sfm.log', O)   # a retry continues from here
+    except Exception as e: say('could not keep the SfM work:', str(e)[:150])
 rep = json.load(open(f'{W}/sfm/sfm_report.json')); shutil.copy(f'{W}/sfm/sfm_report.json', O); push(f'{O}/sfm_report.json', 'sfm_report.json')
 if rep['registered'] < 0.85 * rep['frames'] or rep['models'] > 1:
     say(f"WARNING: only {rep['registered']} of {rep['frames']} frames in the main model ({rep['models']} models): the capture broke "
@@ -168,6 +217,37 @@ if any(len(v) > 3 and 'geo' in v[3] for v in VARIANTS):                         
     sh('nvidia-smi --query-gpu=memory.used --format=csv')
 import torch
 NGPU = torch.cuda.device_count(); say('GPUs:', NGPU)
+
+if PREP_ONLY:                                    # plan of 30 Oct: prove a whole-house run fits before any splat training (final/precheck.py)
+    tim = dict(frames=n, frames_planned=NFRAMES, video_frames=VTOT, frames_min=frames_min, sfm_min=sfm_min,
+               hours_before_precheck=round((time.time() - T0) / 3600, 3))
+    sh(f"cd {EX} && PYTHONPATH={EX}:{F}:$PYTHONPATH python {F}/precheck.py {EX} {D} {W} {O} '{json.dumps(tim)}' {PP}")
+    shutil.copytree(f'{D}/sparse', f'{O}/sparse', dirs_exist_ok=True); shutil.copytree(f'{D}/images', f'{O}/images', dirs_exist_ok=True)
+    for b in glob.glob(f'{W}/bench_*.log'): shutil.copy(b, O)
+    for f in ('precheck.json', 'rooms.json', 'rooms.png', 'chunks.json'):
+        if os.path.exists(f'{O}/{f}'): push(f'{O}/{f}', f)
+    assert os.path.exists(f'{O}/precheck.json'), 'pre-check failed (see its log above)'
+    say('PRE-CHECK DONE', json.load(open(f'{O}/precheck.json')).get('decision')); raise SystemExit(0)
+
+if os.environ.get('AUTO_STEPS') == '1':     # run 4's recipe for any size: ~83.6 steps per training view, 1.5 M splats per 37 m2
+    import math, precheck, rooms
+    precheck.setup(EX, D, W, O, {}, PP)
+    for _ in range(4):
+        precheck.DEPTH = DEPTH; nreg = rep['registered']; tv = nreg - math.ceil(nreg / 8); steps = int(round(83.6 * tv))
+        nm, C_, R_, P_, ob_ = rooms.load(f'{D}/sparse/0'); area = sum(r_['area_m2'] for r_ in rooms.split(nm, C_, R_, P_, ob_)[1])
+        cap = int(min(4e6, max(1.5e6, 1.5e6 * area / 37)))
+        dry = precheck.bench('dryrun', '0', cap); hours = (steps * (dry['s_per_step'] or 9) * 1.1) / 3600 + 0.5
+        left = 11.0 - (time.time() - T0) / 3600                                                # Kaggle stops a session at 12 h
+        say(f'GO/NO-GO: {n} frames, {tv} train views, {area:.1f} m2, cap {cap}, {steps} steps, {dry["s_per_step"]} s/step, '
+            f'peak {dry["peak_mem_gb"]} GB -> {hours:.1f} h of {left:.1f} h left')
+        json.dump(dict(frames=n, train_views=tv, area_m2=round(area, 1), cap=cap, steps=steps, dry=dry, hours=round(hours, 2), left=round(left, 2)),
+                  open(f'{O}/go_nogo.json', 'w'), indent=1)
+        if dry['ok'] and max(dry['peak_mem_gb'].values()) <= 13 and hours <= min(9.0, left): break
+        if not (REUSE and dry['ok']): raise SystemExit(f'NO-GO: would not finish safely ({hours:.1f} h, dry run ok={dry["ok"]}): nothing trained')
+        rep = take(rep['thin'] + 1); n = rep['frames']; DEPTH = '--depth-loss' if not rep.get('frames_without_points') else ''
+        for x in ('cameras.bin', 'images.bin', 'points3D.bin'): shutil.copy(f'{W}/sfm/sfm/{x}', f'{D}/sparse/0/{x}')
+    else: raise SystemExit('NO-GO: still too long after thinning 4 times')
+    VARIANTS = [['full', steps, cap]]; say('training', VARIANTS)
 
 def start(name, steps, cap, gpu, kind='gs'):
     res = f'{W}/{name}'
@@ -215,7 +295,7 @@ while running:
 S = {n: json.load(open(f'{O}/{n}/metrics.json')) for n in [v[0] for v in VARIANTS] if os.path.exists(f'{O}/{n}/metrics.json')}
 # the mould: a solid mesh in the same coordinates as full/model.splat, from the 2DGS model if one was trained, else the full model
 geo = next(([v[0], '2dgs'] for v in VARIANTS if len(v) > 3 and v[3] == '2dgs'), ['full', '3dgs'])
-if os.path.isdir(f'{W}/{geo[0]}/ckpts'):
+if os.path.isdir(f'{W}/{geo[0]}/ckpts') and os.environ.get('NO_MESH') != '1':
     sh(f"cd {EX} && python {F}/mesh_tsdf.py {EX} {D} {W}/{geo[0]} {O}/mesh {O}/full/level.json {geo[1]} {os.environ.get('MESH_VOXELS', 512)}")
     if os.path.exists(f'{O}/mesh/mesh.json'): S['mesh'] = json.load(open(f'{O}/mesh/mesh.json'))
 shutil.copytree(f'{D}/sparse', f'{O}/sparse', dirs_exist_ok=True)                        # cameras, so QA can be redone later

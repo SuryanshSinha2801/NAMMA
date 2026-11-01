@@ -1,0 +1,12 @@
+{
+ "n": 2,
+ "run": "20261026-0327",
+ "objects": "objects/20261027-0642",
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "dl3dv_res": "images_2",
+ "nframes": 420,
+ "long": 1440,
+ "texel": 0.006,
+ "views": 12,
+ "how": "clay room (steps 1-4, CPU, no Kaggle): change n and push. 'objects' = per-splat object ids used only to know which splats are furniture"
+}

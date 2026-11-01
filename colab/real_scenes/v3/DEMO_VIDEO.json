@@ -1,0 +1,9 @@
+{
+ "n": 1,
+ "src": "nvs-bench/zipnerf",
+ "scene": "berlin",
+ "fps": 8,
+ "long": 1920,
+ "preset": "home",
+ "note": "Zip-NeRF Berlin apartment (several rooms, handheld walk-through photos, MIT mirror) -> video.mp4 -> app inbox job; the job starts when its trigger v3/inbox/<job>.json is pushed (after the Kaggle GPU is free)"
+}

@@ -1,0 +1,44 @@
+# Clay room on the CPU (approved plan 27 Oct, steps 1-4): the run as clean solid geometry (straight walls, floor, ceiling,
+# furniture blocks) textured from the real photos, a three.js viewer, a Blender check, comparison with the splat model.
+# Start: change "n" in colab/real_scenes/v3/CLAY.json and push. Results: hf://datasets/<user>/namma-v3-out/clay/<time>/.
+name: clay-room
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [colab/real_scenes/v3/CLAY.json]
+concurrency:
+  group: clay-room
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+            scripts/site_look
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # apt's blender hung for 54 min (run 40541641951); the official Blender 4.2 LTS build needs only a few X libs
+      - timeout-minutes: 25
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libegl1 libgl1 libgomp1 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 libsm6 > /dev/null
+          (timeout 900 curl -sSfL https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz | sudo tar -xJ -C /opt && sudo ln -sf /opt/blender-4.2.3-linux-x64/blender /usr/local/bin/blender && blender --version | head -1) || echo "no blender: the Blender check is skipped"
+          df -h /
+      - run: pip install -q huggingface_hub numpy pillow pandas playwright==1.49.1 && python -m playwright install --with-deps chromium
+      - name: Clay room
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/clay_gh.py
+      - name: Screenshots
+        if: env.TOUR_RUN != ''
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: |
+          sleep 90
+          python scripts/site_look/look.py

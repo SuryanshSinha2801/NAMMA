@@ -1,1 +1,29 @@
-{"run": "20261026-0327", "floorplan": true, "collision": true, "n": 4}
+{
+ "run": "20261031-1528",
+ "rebuild": false,
+ "model": "solid/clean.ply",
+ "sh": 3,
+ "dst": "tour_v2",
+ "url_name": "tour_v2_url.txt",
+ "prune": false,
+ "keep": [
+  "20261025-2336-78b302e60a23f66548af",
+  "20261026-0309-3e9ccf6779bde2c1df3f",
+  "20261026-0327-61a95d994e7c78c23d8b",
+  "20261026-0327-ad28635b65fd1bc56e77",
+  "20261026-0610-1cdd3e35fe8ac7bd27b1",
+  "20261027-1849-world-03dd8b50eb66892b7e3b",
+  "20261027-1849-world-b16e6e0adb2f8007740e",
+  "20261028-0513-d4c0f0e3c30f218ea14d",
+  "20261029-0144-ca04593384e866f8ea58",
+  "20261029-0346-3e051a7249c674f6a9e3",
+  "20261031-1528-c83619ed2c647e9986fe",
+  "20261031-1528-eae460bf984645cbebc8"
+ ],
+ "folder": "20261031-1528-c83619ed2c647e9986fe",
+ "head": true,
+ "floorplan": false,
+ "collision": true,
+ "n": 47,
+ "note": "same stable tour URL: redeploy fixed editor that fetches live HTML on every Apply, persists edited mesh + collision + viewer HTML in dataset; do not roll viewer back"
+}

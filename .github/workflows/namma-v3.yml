@@ -16,11 +16,22 @@ concurrency:
   group: namma-v3
   cancel-in-progress: false
 
+# Kaggle jobs longer than one GitHub job (6 h): gh_run.py reports still_running and the follow-up jobs collect them.
+env:
+  KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 358
-    steps:
+    env:
+      COLLECT: ""
+    outputs:
+      still_running: ${{ steps.go.outputs.still_running }}
+    steps: &steps
+      - name: Free disk for big videos (an 8 GB phone video is downloaded, then sent to Kaggle)
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL; df -h / | tail -1
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
@@ -29,17 +40,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
+      - run: pip install -q kaggle==2.2.5 six huggingface_hub pandas pillow
       - name: Kaggle job (input -> push -> wait -> outputs)
-        env:
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        id: go
         run: python colab/real_scenes/v3/gh_run.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: namma-v3-out
+          name: namma-v3-out-${{ github.job }}
           path: |
             out/
             !out/**/*.ply
           if-no-files-found: ignore
+  collect1:
+    needs: run
+    if: needs.run.outputs.still_running == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    env:
+      COLLECT: "1"
+    outputs:
+      still_running: ${{ steps.go.outputs.still_running }}
+    steps: *steps
+  collect2:
+    needs: collect1
+    if: needs.collect1.outputs.still_running == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    env:
+      COLLECT: "1"
+    steps: *steps

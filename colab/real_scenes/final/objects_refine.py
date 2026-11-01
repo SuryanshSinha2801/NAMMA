@@ -3,9 +3,12 @@
 (docs/KMYI_NOTES.md): object ids must agree in 3D, not only per frame.
   walls   big vertical planes (RANSAC on the opaque splats, >= 1.5 m wide and 1.2 m tall). The part of an object lying on such
           a plane is wall when it spans > 1.5 m (v2: 'couch' = sofa + coat + art + the wall between them).
-  smooth  each opaque splat takes the clear majority id of its 12 nearest neighbours within 5 cm (room = 0 counts too), twice.
-  split   each object is cut into its 3D-connected pieces; every big piece is its own object (v2: 'bed' = bed + dresser).
+  smooth  each opaque splat takes the clear majority id of its 12 nearest neighbours within 5 cm (room = 0 counts too; at least
+          4 neighbours), twice.
+  split   an object holding two or more big separate parts is cut into them (v2: 'bed' = bed + dresser); else it stays whole.
+  mixed   a piece on a wall wider than 1 m is cut by position + colour (v3.1: wall art + floor lamp + sofa back as one 'lamp').
   merge   two objects are one only if their boxes overlap >= 50 % AND they look alike (CLIP cosine >= 0.85), never on a name.
+  join    touching pieces whose names mean one piece of furniture (bed / bedding / blanket ...) are one object (v3.1: bed = 2 'blankets').
   names   Qwen2.5-VL-3B on the CPU, told the measured size and whether the thing hangs on a wall; CLIP zero-shot over the
           size-plausible labels replaces its answer only when the answer is generic or impossible for that size / place.
   masks   without a GPU renderer: the object's opaque splat centres projected into a real training frame, hidden ones removed by
@@ -31,6 +34,24 @@ SIZE = {'bed': (1.3, 2.6), 'sofa': (1.2, 3.2), 'couch': (1.2, 3.2), 'mattress': 
         'coat on a hanger': (0.4, 1.4), 'chair': (0.4, 1.1), 'stool': (0.3, 0.8), 'toilet': (0.4, 0.9), 'rug': (0.6, 4.0)}
 FLOOR = {'cushion', 'pillow', 'blanket', 'bed', 'sofa', 'couch', 'armchair', 'chair', 'dresser', 'wardrobe', 'nightstand', 'side table', 'end table', 'coffee table',
          'trash can', 'suitcase', 'floor lamp', 'rug', 'mattress', 'bench', 'stool', 'ottoman', 'desk', 'tv stand', 'dining table', 'toilet'}
+
+# names that mean the same piece of furniture: touching pieces with names in one group are one object (v3.1: bed = 2 'blankets')
+GROUPS = {'bed': {'bed', 'bedding', 'blanket', 'blankets', 'duvet', 'comforter', 'sheet', 'sheets', 'pillow', 'pillows', 'mattress', 'quilt'},
+          'sofa': {'sofa', 'couch', 'armrest', 'cushion', 'cushions', 'loveseat', 'settee'},
+          'side table': {'table', 'side', 'end', 'nightstand', 'stand'}}
+
+
+def group_of(label):
+    w = set((label or '').lower().replace('-', ' ').split())
+    if 'lamp' in w: return None                                                           # 'table lamp' is not a table
+    return next((g for g, ws in GROUPS.items() if w & ws and (g != 'side table' or 'table' in w or 'nightstand' in w)), None)
+
+
+def fit(label, size):
+    """How far the measured size is from the middle of the label's size range (log ratio; None = no range known)."""
+    k = key_of(label or '')
+    if k not in SIZE: return None
+    lo, hi = SIZE[k]; return abs(float(np.log(max(size) / np.sqrt(lo * hi))))
 
 
 def key_of(label):
@@ -100,32 +121,56 @@ def smooth(P, lab, k=12, r=0.05, rounds=2):
     for _ in range(rounds):
         L = np.where(ok, lab[nb], -1); labels = np.unique(lab)
         cnt = np.stack([(L == c).sum(1) for c in labels], 1); best = cnt.argmax(1); top = cnt[np.arange(len(P)), best]
-        flip = (top > ok.sum(1) / 2) & (labels[best] != lab); lab = np.where(flip, labels[best], lab)
+        flip = (top > ok.sum(1) / 2) & (ok.sum(1) >= 5) & (labels[best] != lab); lab = np.where(flip, labels[best], lab)
     return lab
 
 
-def split(P, lab, min_pts=150):
-    """Every object -> its 3D-connected pieces (DBSCAN, eps 6 cm or 2.5 x the typical spacing). Big pieces become objects
-    (parent kept), small ones join the nearest big piece within 10 cm, else the room."""
+def split(P, lab, min_pts=150, gap=0.3):
+    """An object is cut only when it holds two or more big parts (each >= 10 % of it and >= min_pts) that DBSCAN separates
+    (eps 10 cm or 4 x the typical spacing): v2's 'bed' = bed + dresser. Otherwise it stays whole (big furniture has few opaque
+    splats and falls apart at small eps: v3.0 lost the bed and the sofa that way); only bits > 30 cm from every big part go to
+    the room."""
     import open3d as o3d
     from scipy.spatial import cKDTree
     out = np.zeros(len(P), int); parent = {}; nid = 0
     for k in np.unique(lab[lab > 0]):
         m = np.where(lab == k)[0]
         if len(m) < 30: continue
-        Q = P[m]; nn = cKDTree(Q).query(Q, k=2)[0][:, 1]; eps = max(0.06, 2.5 * float(np.median(nn)))
-        cl = np.asarray(o3d.geometry.PointCloud(o3d.utility.Vector3dVector(Q)).cluster_dbscan(eps=eps, min_points=6))
-        if not (cl >= 0).any(): cl = np.zeros(len(m), int)
-        sz = np.bincount(cl[cl >= 0]); big = [c for c in np.where(sz >= max(min_pts, 0.15 * sz.max()))[0]]
-        if not big: big = [int(sz.argmax())] if sz.max() >= min_pts / 2 else []
-        if not big: continue
-        ids = {}
+        Q = P[m]; nn = cKDTree(Q).query(Q, k=2)[0][:, 1]; eps = max(0.10, 4 * float(np.median(nn)))
+        cl = np.asarray(o3d.geometry.PointCloud(o3d.utility.Vector3dVector(Q)).cluster_dbscan(eps=eps, min_points=4))
+        sz = np.bincount(cl[cl >= 0]) if (cl >= 0).any() else np.zeros(0, int)
+        big = [c for c in range(len(sz)) if sz[c] >= max(min_pts, 0.10 * len(m))]
+        if len(big) <= 1:                                                                  # one object: keep it whole
+            main = (cl == big[0]) if big else (cl == int(sz.argmax()) if len(sz) else np.ones(len(m), bool))
+            d = cKDTree(Q[main]).query(Q, k=1)[0]; nid += 1; parent[nid] = int(k); out[m[d < gap]] = nid; continue
+        bigpts = np.isin(cl, big); ids = {}
         for c in big: nid += 1; ids[c] = nid; parent[nid] = int(k); out[m[cl == c]] = nid
-        small = ~np.isin(cl, big)
-        if small.any():
-            bigpts = np.isin(cl, big); d, j = cKDTree(Q[bigpts]).query(Q[small], k=1)
-            near = d < 0.10; out[m[small][near]] = out[m[bigpts][j[near]]]
+        d, j = cKDTree(Q[bigpts]).query(Q[~bigpts], k=1); near = d < gap; out[m[~bigpts][near]] = out[m[bigpts][j[near]]]
     return out, parent
+
+
+def split_wall_mix(P, rgb, lab, parent, planes, min_pts=100):
+    """A piece lying on a wall plane and wider than 1 m is often several things (v3.1: art + floor lamp + sofa back): it is cut by
+    position + colour (DBSCAN on xyz / 15 cm and rgb / 0.15). Parts >= 15 % become pieces, the rest joins the nearest part."""
+    from scipy.spatial import cKDTree
+    nid = max(parent) if parent else 0; out = {}
+    for k, pk in list(parent.items()):
+        m = np.where(lab == k)[0]
+        if len(m) < 2 * min_pts: continue
+        Q = P[m]; lo, hi = np.percentile(Q, 2, 0), np.percentile(Q, 98, 0)
+        d_wall = min([float(np.median(np.abs(Q @ n + d))) for n, d, *_ in planes] or [9.0])
+        if d_wall > 0.25 or span(Q) < 1.0: continue
+        F = np.c_[Q / 0.15, rgb[m] / 0.15]
+        # 6-D connected components on a radius graph (open3d's DBSCAN is 3-D only)
+        tree = cKDTree(F); pairs = tree.query_pairs(1.0, output_type='ndarray'); uf = UF(len(m))
+        for a, b in pairs: uf.union(int(a), int(b))
+        root = np.array([uf.find(i) for i in range(len(m))]); u, cl = np.unique(root, return_inverse=True); sz = np.bincount(cl)
+        big = [c for c in range(len(sz)) if sz[c] >= max(min_pts, 0.15 * len(m))]
+        if len(big) < 2: continue
+        bp = np.isin(cl, big); d, j = cKDTree(Q[bp]).query(Q[~bp], k=1); owner = cl.copy(); owner[~bp] = cl[bp][j]
+        for c in big[1:]: nid += 1; parent[nid] = pk; lab[m[owner == c]] = nid
+        lab[m[owner == big[0]]] = k; out[int(k)] = len(big)
+    return lab, parent, out
 
 
 class Frames:
@@ -213,7 +258,8 @@ class Namer:
         if self.vl is None or time.time() > self.t_end: return ''
         w, dp = sorted([size[0], size[2]], reverse=True)
         q = (f'The object outlined in red is about {w:.1f} m wide, {dp:.1f} m deep and {size[1]:.1f} m tall'
-             + (', fixed on the wall' if on_wall else '') + '. What is it? Answer with 1 to 4 words, only the object name.')
+             + (', fixed on the wall' if on_wall else '') + '. What is it? (A boxy wall unit under a window is usually an air conditioner.) '
+             'Answer with 1 to 4 words, only the object name.')
         msg = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': q}]}]
         crop = crop.copy(); crop.thumbnail((448, 448))
         text = self.vp.apply_chat_template(msg, tokenize=False, add_generation_prompt=True); t = time.time()
@@ -230,7 +276,10 @@ class Namer:
         pp = pz * ok; pp = pp / pp.sum() if pp.sum() > 0 else pz; j = int(pp.argmax()); c, pc_ = VOCAB[j], float(pp[j])
         ans = self.ask(view['crop'], size, on_wall)
         good = bool(ans) and ans not in GENERIC and len(ans.split()) <= 5
-        if good and plausible(ans, size, on_wall): label, why = ans, 'vlm'
+        wv, wc = set(ans.replace('-', ' ').split()), set(c.split()); fa, fc = fit(ans, size), fit(c, size)
+        if (good and plausible(ans, size, on_wall) and not (wv & wc) and pc_ >= 0.2 and fa is not None and fc is not None and fc < fa - 0.1):
+            label, why = c, 'clip (fits the size better than the vlm answer)'
+        elif good and plausible(ans, size, on_wall): label, why = ans, 'vlm'
         elif pc_ >= 0.25: label, why = c, 'clip (vlm ' + ('generic' if not good else 'impossible for its size/place') + ')'
         elif good: label, why = ans, 'vlm (clip unsure)'
         else: label, why = None, 'unknown'
@@ -252,6 +301,8 @@ def main(data, ply, sid_path, old_json, level_json, mpu, out, nframes=40):
         if mo.sum() >= 50 and span(P[mo]) > 1.5: lab[mo] = 0; walls[int(k)] = int(mo.sum())
     say('wall parts removed from v2 objects:', {f"{k} {old.get(k, {}).get('label', '')}": n for k, n in walls.items()})
     lab = smooth(P, lab); lab, parent = split(P, lab)
+    rgb = np.clip(0.5 + 0.28209479 * np.stack([v['f_dc_0'], v['f_dc_1'], v['f_dc_2']], 1)[solid], 0, 1)
+    lab, parent, mixed = split_wall_mix(P, rgb, lab, parent, planes); say('mixed wall pieces cut by colour:', mixed)
     say(len(parent), 'pieces after 3D smoothing + split:', {k: f"{p} {old.get(p, {}).get('label', '')}" for k, p in parent.items()})
     fr = Frames(data, X[solid], int(nframes)); nm = Namer(os.environ.get('OBJ_VLM', '1') == '1')
     objs = []
@@ -288,6 +339,7 @@ def main(data, ply, sid_path, old_json, level_json, mpu, out, nframes=40):
             o.update(box_m=[lo.round(3).tolist(), hi.round(3).tolist()], centre_m=((lo + hi) / 2).round(3).tolist(), size_m=(hi - lo).round(2).tolist())
         merged.append(o)
     say(len(objs) - len(merged), 'merged on look + overlap')
+    merged, joined = join_touching(merged, P, fr, out); say('joined touching pieces of one thing:', joined)
     keep, to_room = [], []
     for o in merged:
         w = set((o.get('label') or '').replace('-', ' ').split())
@@ -310,6 +362,34 @@ def main(data, ply, sid_path, old_json, level_json, mpu, out, nframes=40):
                    metres_per_unit=mpu, minutes=round((time.time() - T0) / 60, 1)),
               open(f'{out}/objects.json', 'w'), indent=1)
     say('OBJECTS DONE', json.dumps([(o['id'], o['label'], o['parent_label'], o['size_m']) for o in res]))
+
+
+def join_touching(objs, P, fr, out, gap=0.10):
+    """Pieces whose names fall in one furniture group (GROUPS, from the VLM answer or the label) and that touch (closest opaque
+    splats < 10 cm apart) are one object, named by the group, with a new outline of the whole. v2's bad merge needed neither
+    contact nor the VLM's own words."""
+    from scipy.spatial import cKDTree
+    g = [group_of(o.get('vlm')) or group_of(o.get('label')) for o in objs]; uf = UF(len(objs)); trees = {}
+    for i in range(len(objs)):
+        for j in range(i + 1, len(objs)):
+            if g[i] is None or g[i] != g[j]: continue
+            if i not in trees: trees[i] = cKDTree(P[objs[i]['members']])
+            if trees[i].query(P[objs[j]['members']], k=1, distance_upper_bound=gap)[0].min() < gap: uf.union(i, j)
+    groups = {}
+    for i in range(len(objs)): groups.setdefault(uf.find(i), []).append(i)
+    res, joined = [], []
+    for ids in groups.values():
+        ids = sorted(ids, key=lambda i: -len(objs[i]['members'])); o = objs[ids[0]]
+        if len(ids) > 1:
+            o['members'] = np.unique(np.concatenate([objs[i]['members'] for i in ids])); Q = P[o['members']]
+            lo, hi = np.percentile(Q, 2, 0), np.percentile(Q, 98, 0)
+            o.update(box_m=[lo.round(3).tolist(), hi.round(3).tolist()], centre_m=((lo + hi) / 2).round(3).tolist(), size_m=(hi - lo).round(2).tolist(),
+                     label=g[ids[0]], label_from=f"joined: {[objs[i].get('label') for i in ids]}", joined_pieces=[objs[i]['piece'] for i in ids])
+            view = outline(fr, fr.X[o['members']], f"{out}/crops/p{o['piece']}.jpg")
+            if view: o.update(crop=f"crops/p{o['piece']}.jpg", frame=view['frame'], mask_px=view['mask_px'])
+            joined.append(o['label_from'])
+        res.append(o)
+    return res, joined
 
 
 def sheet(objs, out):

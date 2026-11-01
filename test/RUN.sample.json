@@ -1,0 +1,17 @@
+{
+  "n": 4,
+  "collect": false,
+  "source": "github:test/sample_data/lobby_clip30.mp4",
+  "kernel": "namma-r1-quick-v4",
+  "kaggle_dataset": "namma-r1-sample",
+  "env": {
+    "NFRAMES": "120",
+    "LONG": "960",
+    "STEPS": "1000",
+    "PREVIEW": "0",
+    "MESH_VOXELS": "128",
+    "VARIANTS": "[[\"full\",1000,300000],[\"geometry\",1000,300000,\"2dgs\"]]"
+  },
+  "scene": "NAMMA Round 1 sample video: lobby_clip30.mp4",
+  "note": "Quick full-path smoke test from the repository MP4 using GitHub -> Kaggle API -> T4 -> Hugging Face. 120 frames (keep registration threshold), 1k 3DGS + 2DGS steps, 128-voxel TSDF mesh. The QA crop fix is included. Not a quality benchmark."
+}

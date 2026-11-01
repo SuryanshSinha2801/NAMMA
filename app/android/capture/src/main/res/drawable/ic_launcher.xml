@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app icon: a house outline with a record dot on dark teal (ic_stat.xml: the same, white only, for notifications) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#FF0F4C5C" android:pathData="M24,0a24,24 0,1 1,0 48a24,24 0,1 1,0 -48z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,6L4,22h6v20h28V22h6L24,6zM34,38H14V20.5l10,-8 10,8V38z" />
+    <path android:fillColor="#FFE5484D" android:pathData="M24,29m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0" />
+</vector>

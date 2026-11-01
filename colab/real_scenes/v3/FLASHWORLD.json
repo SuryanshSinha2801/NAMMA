@@ -1,0 +1,15 @@
+{
+ "n": 1,
+ "run": "20261026-0327",
+ "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
+ "res": "images_2",
+ "spaces": ["imlixinyang/FlashWorld-Demo", "jbilcke-hf/FlashWorld-ZeroGPU"],
+ "fov_y": 50,
+ "paths": ["turn", "walk"],
+ "prompt": "A hotel room with a large bed, white bedding, a grey sofa, a wooden desk and a TV, beige walls, grey carpet floor, warm lamps, realistic photo.",
+ "samples": [
+  {"name": "bed_view", "frame": 120},
+  {"name": "sofa_view", "frame": 300}
+ ],
+ "how": "Photo -> 3D splat world with FlashWorld on its free ZeroGPU Space (no Kaggle). Change n and push. Results: hf://datasets/<user>/namma-v3-out/flashworld/<time>/"
+}

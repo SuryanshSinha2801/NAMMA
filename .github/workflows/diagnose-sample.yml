@@ -1,0 +1,32 @@
+name: Diagnose NAMMA sample Kaggle job
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: ["test/DIAGNOSE.sample.json", ".github/workflows/diagnose-sample.yml"]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Kaggle CLI
+        run: pip install -q kaggle==2.2.5 six
+      - name: Read Kaggle sample dataset and kernel status
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+        run: |
+          set +e
+          echo "=== Checking sample dataset and kernel only; credentials are never printed ==="
+          echo "=== Sample dataset status ==="
+          kaggle datasets status suryanshsinha28/namma-r1-sample
+          echo "DATASET_STATUS_EXIT=$?"
+          echo "=== Sample kernel status ==="
+          kaggle kernels status suryanshsinha28/namma-r1-quick-v4
+          echo "KERNEL_STATUS_EXIT=$?"
+          echo "=== Recent Kaggle kernel logs ==="
+          kaggle kernels logs suryanshsinha28/namma-r1-quick-v4
+          echo "KERNEL_LOGS_EXIT=$?"

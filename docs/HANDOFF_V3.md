@@ -16,6 +16,8 @@ Repo `github.com/RazyAnas/NAMMA` (public), branch **`claude/wonderful-cori-i3fn4
 - **Owner**: Raiyan Razi (they/them), GitHub `RazyAnas`, Kaggle `anasrazy`, Hugging Face `anasrazy`. Time zone IST.
 - **Rules** (keep them):
   - Don't ask questions, act. Short answers, plain words.
+  - **Focus is 3D quality** (owner, 27 Oct: "i never asked u for object detection"): the object layer (objects3d.py,
+    objects_refine.py) is stopped; work on how the room itself looks unless the owner asks otherwise.
   - Check every result yourself (QA sheet, metrics) before handing anything over. Never hand over unchecked models.
   - Measure with proof. Keep measured numbers and claims apart. Say plainly when something failed.
   - Give an expected finish time (IST) with every job.
@@ -328,3 +330,138 @@ The Claude cloud container **cannot reach kaggle.com** (proxy 403). GitHub's run
   `mcmc` strategy first (docs/KMYI_NOTES.md).
 - **Kwang Moo Yi's posts** (owner: "all the important tweets related to our problems"): `docs/KMYI_NOTES.md`, about 55 posts
   grouped by our problems, with a ranked list of what to try (1: gsplat's `mcmc` strategy, his own 3DGS-MCMC).
+- **CPU tools (27 Oct, no Kaggle GPU hours)**: `final/cpu_render.py` renders splats on a CPU with gsplat's math (analytic check
+  exact; run 5 full: 24.54 dB at 480 px vs gsplat 25.39 at full size). Floater pruning on trained models (`final/cleanup_cpu.py`,
+  dual-training agreement + neighbourhood shape) does nothing measurable (1.4k of 1.5M splats, +0.01 dB): the smudges are on the
+  surfaces, so they need training-time fixes (mcmc, geo prior).
+- **Tour fidelity (`final/tour_fidelity.py`, fidelity/20261027-0745, run 4, 20 held-out views at 640 px)**: trained 24.76 dB /
+  SSIM 0.936; smear filter -0.05 dB; **the tour as shipped (compressed PLY, SH band 1) -2.1 dB** (0.896; wrong colours, hazy
+  mirror/glass); compressed PLY with all SH bands -0.08 dB (91 MB vs 37.5 MB); SH 0 -2.8 dB. SOG with SH is hours on a CPU.
+  make_tour.build now keeps all SH bands (TOUR_SH=1 for the small file); run 4's tour rebuilt with `tour_publish.py rebuild`.
+- **Plan A (clay room) PAUSED by the owner (27 Oct, "we will do plan A later")**. Code: `final/clay_room.py`, `v3/clay_gh.py`,
+  `clay-room.yml` (now installs the official Blender 4.2 build; apt's blender hung 54 min). Rerun = bump `v3/CLAY.json` n.
+- **Plan B v1, NAMMA World by "drones" (27 Oct)**: `final/world_v1.py` (loop), `final/world_job.py` (Kaggle T4 job),
+  `v3/world_gh.py` + `world.yml` + `v3/WORLD.json` (runner). Start from the photo as a textured surface (MoGe-2 metric depth,
+  cut at depth jumps) + a painted "behind" layer; then virtual cameras (90-degree lens, ~40 views: turns, up/down, side steps)
+  render the world, paint what is missing (RealVisXL V4 inpainting + LCM-LoRA, 8 steps), get its depth (MoGe-2 with the known
+  lens), fit it to the depth already there and add it as a textured patch. Bug found and fixed with a synthetic room + oracle
+  painter: the old gap-fill copied wrong seam pixels into whole patches (2.7-25 % depth error with a PERFECT depth model);
+  now outliers are dropped and the correction is a smooth normalized convolution: 0 % wrong, 39.5 dB / 99.87 % coverage on
+  random views; 32.9 dB with a depth model 1.3x off + 5 % noise. Test scripts were in the scratchpad (synthetic box room +
+  table; `WORLD_LOCAL=1` runs world_job.py on the CPU with stand-in models). Output per sample: world.glb, look-around viewer
+  (drag = turn 360 degrees, WASD walk within walk_m, "Show generated" tints AI parts orange), world360.jpg, drones/*.jpg
+  (render | painted per drone), world_sheet.jpg (real neighbouring frames | world) and report.json (PSNR/SSIM, times).
+- **28 Oct, PLAN A (owner: "we don't have time anymore"): run 6, then any video -> tour link with no edits, then an Android app.**
+  World generation from images / ordinary video is to be discussed after this. Plan B (worlds) and FlashWorld are paused
+  (`final/flashworld_job.py`, a Kaggle port, is written but has not run).
+  - **Run 6** (RUN.json n 13, pushed 10:43 IST, GitHub run 40636702454):
+    - run 4's recipe at more detail: the original phone video (900 sharpest frames), 1920 px, 40k steps, 3M cap;
+    - `full` = run 4 exactly, `prior` = + room prior (one per T4);
+    - mesh from the 3DGS model (run 5: 74 % observed vs 59 % for 2DGS);
+    - the tour is back to **SH1**: the owner rejected the 27 Oct SH3 rebuild of run 4 (dark walls and ceiling), even though SH3
+      measured +2 dB.
+    - It runs past GitHub's 345 min poll, so collect it with RUN.json `collect: true` + an n bump.
+    - Pick the winner on held-out exposure-fair PSNR/SSIM plus wall brightness vs the real frames, then set it as `best` in
+      `v3/PIPELINE.json`.
+  - **gh_run.py**:
+    - the Kaggle account comes from the token (`v3/kaggle_io.py`);
+    - it waits for the plain word 'ready' (run 6's first try pushed too early);
+    - new source `hf:<repo>:<path>` (a video, or the app's `video.json` parts);
+    - `kernel` setting: the inbox uses `namma-job`;
+    - `COLLECT=1`; a clean exit with `still_running` while Kaggle still trains;
+    - status hooks for the inbox.
+  - **Inbox pipeline**: `docs/VIDEO_TO_TOUR.md`, `v3/inbox.py`, `v3/PIPELINE.json`, `.github/workflows/inbox.yml`.
+    - Private HF dataset `namma-inbox`; trigger = a push to `v3/inbox/<job>.json`.
+    - There is no cron, because workflows on non-default branches start only from pushes.
+    - One Kaggle job at a time; follow-up jobs collect runs over 6 h.
+    - The first smoke run (no jobs) worked.
+  - **NAMMA Capture app** (`app/android/`):
+    - `core/`: plain Kotlin, tested on the JVM: resumable upload in 32 MB LFS parts, GitHub trigger, coach cues, guide texts.
+    - `capture/`: framework-only Android, no libraries.
+      - Recording: Camera2 widest lens, 1080p30, EIS off, AE/AWB/focus lock; checklist and pass prompts; voice and vibration
+        cues for turns over 35°/s, aim (floor / ceiling), blur, darkness and light jumps.
+      - Upload: foreground service plus a persisted 15-min JobScheduler job.
+      - Results: list with the tour link; the tokens are Keystore-encrypted.
+    - Local type-check: kotlinc against Robolectric's android-all 15 jar (scratchpad).
+    - CI (`android-app.yml`):
+      - a real interrupted + resumed upload to `namma-inbox-test`, then `inbox.assemble` checks that the joined file is
+        identical;
+      - GitHub API calls with GITHUB_TOKEN;
+      - signed APK; the key is kept in `namma-v3-out/app/`;
+      - APK -> `namma-v3-out/app/namma-capture-latest.apk`.
+    - `app/android/ci.json` `e2e: true` uploads a 25 s cut as a real `quick` inbox job (use it after run 6 frees Kaggle).
+  - **Run 6 result (16:35 IST, `namma-v3-out/20261028-0513`)**:
+    - The camera solve was perfect: 900/900 frames, 1 model.
+    - Scores: full 28.02 dB / SSIM 0.899 (needles 8 %); prior 28.04 dB (needles 0 %). These are on a harder held-out set than run 4's.
+    - The tour looked **worse than run 4 to the owner**.
+    - Likely cause: 40k steps over 787 training views is about 51 steps per view, vs about 83 in run 4. The frames also come from the compressed video, not DL3DV's extracted frames.
+    - So the pipeline's `best` preset is back to run 4's recipe exactly: 420 frames, 1440 px, 30k steps, 1.5M splats.
+    - The run-4 SH1 tour (the excellent one) is still published: folder `20261026-0327-4d10a1bca1242609fa9a` in the Space.
+
+## Per-room whole-house viewer (agreed with the owner, 30 Oct; not built yet)
+- One shared camera map for the whole house; walk split into rooms (camera path + floor-plan doorways); one model per room,
+  two rooms at a time on Kaggle's 2 T4s.
+- Each room ships a full model (~40-80 MB) and a light preview (~10 % splats, 3-8 MB). The tour **opens inside the starting room**
+  (full), previews of all other rooms load at once; ~1.5 m before a doorway the next room's full model prefetches; crossing the
+  doorway fades preview -> full in ~0.5 s (blurry-then-sharp only if the download is late); the left room drops back to its
+  preview after a few seconds (no flicker in doorways). Rooms overlap ~0.5 m at doors and blend. Drone/overview: all previews,
+  centre room full. At most current + one neighbour full (~150 MB). Minimap shows rooms; tap = fly there.
+- Whole-house test video (DL3DV, 17 min, 8 GB): 10K/d961728dc5b54ceb70018b4d433041737a51957ebe9f90747097b777c0879f73.
+  Big-video path checked (move not copy on the runner, runner disk freed). Owner: do not start it until per-room is built.
+- **Per-room step 1 done (30 Oct): `final/rooms.py`** (CPU, SfM only; check job `v3/rooms_gh.py` + `rooms.yml`, results
+  `namma-v3-out/rooms/20261030-1139/`). Fine split = watershed of free space between everything standing, then neighbours merged
+  while their cameras see the same points (co-visibility ratio > 0.2; measured doorways 0.00-0.15, pieces of one room 0.2-0.35).
+  Checked by eye on photos: Zip-NeRF Berlin -> 6 = living room, study, bedroom, kitchen, bedroom 2, hall+bathroom (bathroom
+  not split from the hall); run 4 hotel -> 2 (main 28 m2 + 9 m2 entry/bath); Alameda -> 7 (two low-camera pieces to check).
+  Failed attempts (kept in git): walls from all points (split single rooms), co-visibility communities alone (mixed rooms),
+  full-height walls only (white walls have too few SfM points).
+
+## Whole house, 31 Oct: what went wrong in the pre-check runs, and the rules since then
+Measured from `namma-v3-out/20261031-0831/` (namma-house.log, precheck.json, chunks.json):
+1. The first run on the new Kaggle account got no GPU (6 h on CPU). run.py now stops in 1 s without a GPU.
+2. OpenCV read the 62,458-frame 4K 60 fps video at 5 frames/s (3.6 h). Now ffmpeg + NVDEC: 34 min.
+3. The SfM log was held back by `| tail`. Now it streams live with timestamps.
+4. 3,470 frames went into the incremental mapper: 7.6 h, and one global bundle adjustment alone took 72 min.
+5. The walk broke into 4 models.
+   - The main one is frames 1394-3357 (1,964 frames, 6 rooms, 54 m², 1.06 px).
+   - Frames 0-1393 and 3358-3469 are in 3 other pieces: matching broke at ~6.7 min and ~16.1 min of the video.
+6. Features, matches and the other pieces were in /kaggle/temp and were lost.
+7. Frame density counted video frames, so the 60 fps video gave 2x the frames. The slow walk also gave a 5 m² room 583 frames.
+8. The gsplat multi-GPU benchmark crashed (`BilateralGrid` not imported in the workers). Not used.
+
+The gate stopped everything before training: no GPU hours went into a broken model.
+
+Rules:
+- **R1:** SfM gets at most ~1,000 frames (`SFM_MAX`), picked by walking time.
+- **R2:** SfM work is saved to `/kaggle/working/sfm_work`.
+- **R3:** train only with proven code paths.
+- **R4:** a full-size dry run plus a time gate (`AUTO_STEPS=1`, ≤ 9 h, else thin more or refuse) before any long training.
+- **R5:** no mesh for a house (`NO_MESH=1`): collision comes from the floor-plan walls.
+- **R6:** gh_run uploads the model to HF before building the tour.
+
+Reuse: `RUN.json` `source: "reuse:<kernel>"` attaches that run's Kaggle output (frames + sparse/0). `THIN=k` keeps every k-th
+frame (`final/thin_model.py`, tested byte-identical round trip). The job must use another kernel name.
+
+### Whole house result (1 Nov)
+- Run 20261031-1528 (namma-house-train): one model of the house's main camera piece with the run 4 recipe, no errors, 5 h 20 min.
+  Held-out exposure-fair 27.62 dB / SSIM 0.932 / LPIPS 0.146 (run 4: 29.22 / 0.934 / 0.202). Details: final/NOTES.md.
+- Clean-up check without photos: `final/model_compare.py` (fidelity job, FIDELITY.json `compare`). Cleaned = trained, renders identical.
+- Tour v2 (viewer 1.41, current UI, cleaned model, floor plan redrawn): PUBLISH.json run 20261031-1528, link in
+  `20261031-1528/tour_v2_url.txt` (private dataset only).
+- Bug fixed 31 Oct: tour_publish 'head' emptied index.js (`open(f,'w').write(patch(open(f).read()))` truncates before reading);
+  the live hotel tour showed a white screen for ~40 min. Now read first, size-checked, and restored from history if empty.
+- 1 Nov: house spots 3-5 sat ~1 m off the walk (plan() smoothed the path over len/60 = 16 frames); spots now use the exact
+  filmed pose, walk smoothing is capped at 6 frames, and `make_tour.respot` (PUBLISH.json "respot") fixes a built tour from its
+  camera solve alone. All 6 house spots checked by eye in site_look/20261101-0141 (30 s per spot: software WebGL fly-overs are slow).
+  Open: walk mode assumes one floor; this piece of the walk starts upstairs (camera ~3.7 m) and goes down the stairs.
+
+## Automatic checks (1 Nov; owner: "the pipeline should solve problems without you coming to find them")
+Every problem found by hand on the hotel and house tours is now checked (and fixed where possible) by the pipeline itself:
+| What | Where | Rule |
+|---|---|---|
+| Walk collision | `run.py` | every run trains run 4's 2DGS `geo` model beside `full` (55.7 steps/view, timed by the go/no-go); if it cannot fit, the mesh comes from the full model's depth. `MESH_ONLY=1` adds geometry to an existing run (same frames + its level) and `gh_run` starts tour-publish itself |
+| Clean-up | `gh_run.py` tour step | `final/model_compare.py` cleaned vs trained (12 held-out + 9 off-path views): the cleaned model ships only if >= 40 dB and < 0.1 % pixels changed everywhere |
+| Spots | `make_tour.plan` / `respot` | exact filmed poses; each spot is the frame near its place that sees farthest and is sharp (`pick_spots`); horizontal field of view (the viewer's fov is horizontal on landscape screens; vertical gave a 1.5x zoom). Every page update runs `respot` (refuses if cameras do not match) |
+| Publish safety | `tour_publish.py` | index.js size guard + restore; before uploading, the live state is remembered (`publish_state.json`) |
+| Live check | `scripts/site_look/look.py` ASSERT=1 (tour-publish and every new run) | loads, no script errors, index.js > 1 MB, collision.glb > 100 kB, every spot's view matches its real photo (correlation over the shared field of view >= 0.6; calibrated: good 0.78-0.99, broken -0.02-0.39), walk mode at every spot not blurred (>= 0.5 of the spot view's sharpness; broken 0.32-0.38, good >= 0.71) |
+| Roll back | `tour_publish.py --verify` | live check failed -> the previous version of that link goes back up (or a new link is taken down) and the job fails with the reasons |

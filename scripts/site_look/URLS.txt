@@ -1,2 +1,2 @@
 # plain lines: screenshot + text; "tour <url>": open it and move around inside (slow software WebGL)
-tour https://anasrazy-namma-tour.static.hf.space/20261025-2153/index.html?webgl
+# "namma <run> [url file]": one of our own tours, link read from the private results dataset

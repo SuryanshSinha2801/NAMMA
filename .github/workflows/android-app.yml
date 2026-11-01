@@ -1,0 +1,120 @@
+# NAMMA Capture (Android): unit tests + a real resumable upload test (private test dataset) + the GitHub calls, then a signed APK.
+# The signing key lives in the private results dataset (<hf user>/namma-v3-out/app/), so every build installs over the last one.
+# The APK goes to that dataset (app/namma-capture-latest.apk) and to this run's artifacts. No tokens are in the app or the repo:
+# the owner types them into the app once (kept encrypted on the phone).
+name: android app
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths: [app/android/**, .github/workflows/android-app.yml]
+  workflow_dispatch:
+concurrency:
+  group: android-app
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+      GITHUB_TEST_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UPLOAD_TEST_OUT: ${{ github.workspace }}/upload-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            app/android
+            colab/real_scenes/v3
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q huggingface_hub imageio-ffmpeg && ln -s "$(python -c 'import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())')" /usr/local/bin/ffmpeg && ffmpeg -version | head -1
+      - name: Real video for the video check (the hotel room that gave run 4) + worse copies
+        env:
+          QUALITY_DIR: ${{ github.workspace }}/quality
+        run: |
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import hf_hub_download, HfApi
+          vr, scene = 'DL3DV/DL3DV-ALL-video', '389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee'
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          sub = next(k for k in [f'{i}K' for i in range(1, 12)] if api.file_exists(vr, f'{k}/{scene}/video.mp4', repo_type='dataset'))
+          shutil.copy(hf_hub_download(vr, f'{sub}/{scene}/video.mp4', repo_type='dataset', token=os.environ['HF_TOKEN'], local_dir='dl'), 'full.mp4')
+          PY
+          ffmpeg -hide_banner -i full.mp4 2>&1 | grep -E 'Duration|Video:' || true
+          mkdir -p "$QUALITY_DIR"; Q="$QUALITY_DIR"
+          g() { ffmpeg -v error -y $1 -i full.mp4 -vf "$2,fps=4,scale=480:270,format=gray" -f rawvideo -pix_fmt gray "$Q/$3.gray"
+                echo "{\"w\": 480, \"h\": 270, \"fps\": 4, \"expect\": \"$4\"}" > "$Q/$3.json"; ls -la "$Q/$3.gray"; }
+          g "" "null" good good
+          g "" "setpts=PTS/4" fast4x notgood
+          g "" "select='not(between(mod(t\,16)\,0\,8))',setpts=N/FRAME_RATE/TB" jumps bad
+          g "" "scale=1920:-2,gblur=sigma=6" soft bad
+          g "" "tmix=frames=11" smeared notgood
+          g "" "lutyuv=y=val*0.15" dark bad
+          g "-t 20" "null" short bad
+          echo "QUALITY_DIR=$Q" >> "$GITHUB_ENV"
+      - name: End-to-end test video (only when ci.json e2e is true)
+        run: |
+          if python -c "import json,sys;sys.exit(0 if json.load(open('app/android/ci.json')).get('e2e') else 1)"; then
+            ffmpeg -v error -y -ss 5 -t 25 -i full.mp4 -c copy e2e.mp4 && ls -la e2e.mp4
+            echo "E2E_VIDEO=$PWD/e2e.mp4" >> "$GITHUB_ENV"
+          fi
+      - name: Core tests (cues, video check on real video, real interrupted + resumed upload, GitHub calls)
+        run: CORE_ONLY=1 gradle -p app/android :core:test --console=plain
+      - name: The pipeline joins the uploaded parts back into the same file
+        run: |
+          python - <<'PY'
+          import os, sys, hashlib
+          sys.path.insert(0, 'colab/real_scenes/v3'); import inbox
+          repo, manifest, sha = open(os.environ['UPLOAD_TEST_OUT'] + '/job.txt').read().split()
+          inbox.assemble(repo, manifest, 'joined.mp4', os.environ['HF_TOKEN'])
+          a = hashlib.sha256(open('joined.mp4', 'rb').read()).hexdigest(); b = hashlib.sha256(open(os.environ['UPLOAD_TEST_OUT'] + '/test.mp4', 'rb').read()).hexdigest()
+          assert a == b == sha, (a, b, sha); print('joined file identical to the uploaded one:', os.path.getsize('joined.mp4'), 'bytes')
+          PY
+      - name: Signing key (made once, kept in the private results dataset)
+        run: |
+          python - <<'PY'
+          import os, secrets, subprocess
+          from huggingface_hub import HfApi, hf_hub_download
+          api = HfApi(token=os.environ['HF_TOKEN']); repo = api.whoami()['name'] + '/namma-v3-out'
+          try:
+              hf_hub_download(repo, 'app/namma.jks', repo_type='dataset', token=api.token, local_dir='.'); pw = open(hf_hub_download(repo, 'app/keystore_pass.txt', repo_type='dataset', token=api.token, local_dir='.')).read().strip()
+              print('signing key: from the results dataset')
+          except Exception:
+              os.makedirs('app', exist_ok=True); pw = secrets.token_hex(16)
+              subprocess.run(['keytool', '-genkeypair', '-keystore', 'app/namma.jks', '-alias', 'namma', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000',
+                              '-storepass', pw, '-keypass', pw, '-dname', 'CN=NAMMA Capture'], check=True, capture_output=True)
+              open('app/keystore_pass.txt', 'w').write(pw)
+              api.upload_file(path_or_fileobj='app/namma.jks', path_in_repo='app/namma.jks', repo_id=repo, repo_type='dataset')
+              api.upload_file(path_or_fileobj='app/keystore_pass.txt', path_in_repo='app/keystore_pass.txt', repo_id=repo, repo_type='dataset')
+              print('signing key: new, saved to the results dataset')
+          open(os.environ['GITHUB_ENV'], 'a').write(f"KEYSTORE={os.path.abspath('app/namma.jks')}\n")
+          print(f'::add-mask::{pw}'); open(os.environ['GITHUB_ENV'], 'a').write(f'KEYSTORE_PASS={pw}\n')
+          PY
+      - name: APK
+        run: gradle -p app/android :capture:assembleRelease --console=plain
+      - name: APK to the private results dataset
+        run: |
+          python - <<'PY'
+          import glob, os
+          from huggingface_hub import HfApi
+          apk = glob.glob('app/android/capture/build/outputs/apk/release/*.apk')[0]; api = HfApi(token=os.environ['HF_TOKEN'])
+          repo = api.whoami()['name'] + '/namma-v3-out'; v = os.environ['GITHUB_RUN_NUMBER']
+          for name in (f'app/namma-capture-1.0.{v}.apk', 'app/namma-capture-latest.apk'):
+              api.upload_file(path_or_fileobj=apk, path_in_repo=name, repo_id=repo, repo_type='dataset')
+          print('APK', os.path.getsize(apk) // 1024, 'KB -> results dataset app/namma-capture-latest.apk (version 1.0.' + v + ')')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: namma-capture-apk
+          path: app/android/capture/build/outputs/apk/release/*.apk

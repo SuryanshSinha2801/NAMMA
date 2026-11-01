@@ -1,16 +1,14 @@
 {
- "n": 12,
+ "n": 19,
  "collect": false,
- "source": "dl3dv-video:389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
- "kaggle_user": "anasrazy",
+ "source": "reuse:namma-house-train",
+ "kernel": "namma-house-train2",
  "env": {
-  "STEPS": "50000",
-  "NFRAMES": "900",
-  "LONG": "1920",
-  "VARIANTS": "[[\"full\", 50000, 3000000, \"prior\"], [\"geo\", 50000, 3000000, \"prior+geo\"]]"
+  "THIN": "1",
+  "AUTO_STEPS": "1",
+  "LONG": "1440"
  },
- "scene": "DL3DV-Benchmark #44, Hotels-Motels: hotel room, the original phone video (DL3DV/DL3DV-ALL-video)",
+ "scene": "DL3DV-ALL-video 10K/d961728d...: whole house, 17 min, 8 GB (test video, non-commercial data, testing only)",
  "how": "change n (and source) and push to start a run: .github/workflows/namma-v3.yml -> gh_run.py",
- "note": "run 6: the original video (900 sharpest frames instead of DL3DV's 411), 1920 px, 3M splats, 50k steps; A/B: room prior vs room prior + Depth Anything 3 depth/surface guide (final/geo_prior.py) against smudged walls and floaters",
- "dl3dv_res": "images_2"
+ "note": "whole house retrained (owner, 1 Nov): same 982 frames + cameras + run 4 recipe, with the MCMC refine stop scaled to the steps (the first house model refreshed splats only until 25k of 71.8k steps: 69 % dead, blobby); 2DGS geometry beside it for collision; tour + live check at the end"
 }

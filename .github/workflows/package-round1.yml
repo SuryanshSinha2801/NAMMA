@@ -1,0 +1,40 @@
+name: Package NAMMA Round 1 production pipeline for Drive
+on:
+  push:
+    branches:
+      - claude/wonderful-cori-i3fn41
+    paths:
+      - "README.md"
+      - "test/**"
+      - "docs/CAPTURE_GUIDE.md"
+      - "colab/real_scenes/v3/**"
+      - "colab/real_scenes/final/**"
+      - ".github/workflows/namma-v3.yml"
+      - ".github/workflows/namma-sample.yml"
+      - ".github/workflows/package-round1.yml"
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Drive-ready production pipeline ZIP
+        run: |
+          mkdir -p dist
+          zip -r -9 dist/NAMMA_Round1_Production_Pipeline.zip \
+            README.md \
+            docs/CAPTURE_GUIDE.md \
+            test \
+            colab/real_scenes/v3 \
+            colab/real_scenes/final \
+            .github/workflows/namma-v3.yml \
+            .github/workflows/namma-sample.yml
+          sha256sum dist/NAMMA_Round1_Production_Pipeline.zip
+          unzip -l dist/NAMMA_Round1_Production_Pipeline.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NAMMA_Round1_Production_Pipeline
+          path: dist/NAMMA_Round1_Production_Pipeline.zip
+          if-no-files-found: error
+          retention-days: 30

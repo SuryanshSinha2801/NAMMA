@@ -19,6 +19,37 @@ def from_video(video, out, n=300, long_side=1200):
         i += 1
     return k
 
+def from_video_fast(video, out, n=300, long_side=1200, total=0):
+    """Same choice as from_video (sharpest frame per window), but ffmpeg decodes on all CPU cores and scales to long_side
+    itself (30 Oct: OpenCV decoded a 17-min 4K 60 fps video at ~5 frames/s = 3.6 h). Returns the number of frames saved."""
+    import json, subprocess, tempfile, numpy as np
+    vf = f"scale='if(gt(iw,ih),min(iw,{long_side}),-2)':'if(gt(iw,ih),-2,min(ih,{long_side}))':flags=area"
+    if not total:
+        pr = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=nb_read_packets',
+                             '-of', 'json', video], capture_output=True, text=True)
+        total = int(json.loads(pr.stdout)['streams'][0]['nb_read_packets'])
+    with tempfile.TemporaryDirectory() as td:                                        # output size after rotation + scaling
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', video, '-vf', vf, '-frames:v', '1', f'{td}/f.png'], check=True)
+        h, w = cv2.imread(f'{td}/f.png').shape[:2]
+    os.makedirs(out, exist_ok=True); win = max(1, total // n); size = w * h * 3
+    hw = ['-hwaccel', 'cuda'] if subprocess.run(['ffmpeg', '-v', 'error', '-hwaccel', 'cuda', '-i', video, '-t', '1', '-f', 'null', '-'],
+                                                 capture_output=True).returncode == 0 else []   # the T4's video decoder, if ffmpeg has it
+    print('frames: ffmpeg decode on', 'GPU (NVDEC)' if hw else 'CPU (all cores)', flush=True)
+    p = subprocess.Popen(['ffmpeg', '-v', 'error', '-threads', '0', *hw, '-i', video, '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-'],
+                         stdout=subprocess.PIPE, bufsize=size * 4)
+    best, bs, k, i = None, -1, 0, 0
+    while k < n:
+        buf = p.stdout.read(size)
+        if len(buf) < size: break
+        f = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
+        g = cv2.cvtColor(cv2.resize(f, (w // 4, h // 4), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY); sc = cv2.Laplacian(g, cv2.CV_64F).var()
+        if sc > bs: best, bs = f.copy(), sc
+        if (i + 1) % win == 0 and best is not None:
+            save(best, f'{out}/{k:04d}.jpg', long_side); k += 1; best, bs = None, -1
+        i += 1
+    p.stdout.close(); p.kill(); p.wait()
+    return k
+
 def from_images(folder, out, n=300, long_side=1200):
     """Evenly spaced subset (keeps walk order) of an image folder, e.g. frames a dataset already extracted from a video."""
     os.makedirs(out, exist_ok=True)

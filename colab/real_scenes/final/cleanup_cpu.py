@@ -10,7 +10,7 @@ off-path sheet (raised / turned cameras and a view from above), where floaters s
           mean distance > mean + 3 std of the scene) and splats in neighbourhoods with no structure (neither flat nor line-like:
           planarity and linearity both < 0.15) that are also sparse (4x the scene's typical spacing).
   both    union of dual and feat drops
-Usage (from gsplat's examples dir): python cleanup_cpu.py <data dir> <model.ply> <other.splat> <other level.json> <metres_per_unit>
+Usage (from gsplat's examples dir): python cleanup_cpu.py <data dir> <model.ply> <its level.json> <tour.json> <other.splat> <other level.json> <metres_per_unit>
   <out dir> [long side px, default 480] [held-out views, default 26]"""
 import json, os, sys, time, numpy as np, torch
 from PIL import Image
@@ -29,22 +29,27 @@ def other_splats(path, level_json):
     return (r['p'].astype(np.float64) - t) @ R, r['s'].max(1).astype(np.float64), r['c'][:, 3] / 255.0
 
 
-def dual_drop(X, smax, op, Y, yop, mpu):
+def dual_drop(X, smax, op, Y, ys, yop, inside, thr=0.02, k=8):
+    """Support of each splat in the other training = max over its k nearest splats there of opacity x Gaussian falloff with both
+    sizes (so big wall splats are judged by the other model's big wall splats, not by centre distance). Unsupported splats
+    inside the room box are dropped; outside it (the view through the window) both trainings are random but still needed."""
     from scipy.spatial import cKDTree
-    Yk = Y[yop > 0.1]; tree = cKDTree(Yk); r = np.clip(2 * smax, 0.02 / mpu, 0.10 / mpu)
-    cand = np.where(op > 0.05)[0]; d, _ = tree.query(X[cand], k=1, workers=-1)
-    drop = np.zeros(len(X), bool); drop[cand[d > r[cand]]] = True
+    m = yop > 0.05; Yk, yk, ok_ = Y[m], ys[m], yop[m]; cand = np.where((op > 0.05) & inside)[0]
+    d, j = cKDTree(Yk).query(X[cand], k=k, workers=-1)
+    sup = (ok_[j] * np.exp(-0.5 * d ** 2 / (yk[j] ** 2 + smax[cand, None] ** 2))).max(1)
+    drop = np.zeros(len(X), bool); drop[cand[sup < thr]] = True
     return drop
 
 
-def feat_drop(X, op, k=16):
+def feat_drop(X, op, inside, k=16):
     from scipy.spatial import cKDTree
-    cand = np.where(op > 0.05)[0]; P = X[cand]; d, nb = cKDTree(P).query(P, k=k + 1, workers=-1)
+    cand = np.where(op > 0.05)[0]; P = X[cand]; d, nb = cKDTree(P).query(P, k=k + 1, workers=-1); ins = inside[cand]
     md = d[:, 1:].mean(1); outlier = md > md.mean() + 3 * md.std()
     Q = P[nb[:, 1:]] - P[nb[:, 1:]].mean(1, keepdims=True); C = np.einsum('nki,nkj->nij', Q, Q) / k
     ev = np.sort(np.linalg.eigvalsh(C), 1)[:, ::-1]; l1 = np.maximum(ev[:, 0], 1e-20)
     planar, linear = (ev[:, 1] - ev[:, 2]) / l1, (ev[:, 0] - ev[:, 1]) / l1
     loose = (planar < 0.15) & (linear < 0.15) & (md > 4 * np.median(md))
+    outlier &= ins; loose &= ins
     drop = np.zeros(len(X), bool); drop[cand[outlier | loose]] = True
     return drop, dict(outlier=int(outlier.sum()), loose=int(loose.sum()))
 
@@ -58,13 +63,15 @@ def ssim(a, b):
     return float((((2 * mx * my + 1e-4) * (2 * sxy + 9e-4)) / ((mx ** 2 + my ** 2 + 1e-4) * (sx + sy + 9e-4))).mean())
 
 
-def main(data, ply, other, other_level, mpu, out, long=480, nviews=26):
+def main(data, ply, level, tour, other, other_level, mpu, out, long=480, nviews=26):
     mpu, long, nviews = float(mpu), int(long), int(nviews); os.makedirs(out, exist_ok=True)
     sys.path.insert(0, os.getcwd()); from datasets.colmap import Parser, Dataset
     s = cpu_render.load_ply(ply); X = s['means'].double().numpy(); op = s['opacities'].numpy(); smax = s['scales'].max(1).values.double().numpy()
     Y, ys, yop = other_splats(other, other_level); say(len(X), 'splats; other training', len(Y))
-    drops = dict(base=np.zeros(len(X), bool), dual=dual_drop(X, smax, op, Y, yop, mpu))
-    drops['feat'], info = feat_drop(X, op); drops['both'] = drops['dual'] | drops['feat']
+    L = np.array(json.load(open(level))['matrix']); room = (X @ L[:3, :3].T + L[:3, 3]) * mpu; lo, hi = (np.array(b) for b in json.load(open(tour))['room_box'])
+    inside = np.all((room >= lo) & (room <= hi), 1); say(f'{inside.mean():.3f} of the splats inside the room box')
+    drops = dict(base=np.zeros(len(X), bool), dual=dual_drop(X, smax, op, Y, ys, yop, inside), dual_strict=dual_drop(X, smax, op, Y, ys, yop, inside, thr=0.005))
+    drops['feat'], info = feat_drop(X, op, inside); drops['both'] = drops['dual'] | drops['feat']
     rep = dict(splats=len(X), dropped={k: int(v.sum()) for k, v in drops.items()}, feat_parts=info)
     say('dropped:', rep['dropped'], info)
     p = Parser(data, factor=1, normalize=True, test_every=8); ds = Dataset(p, split='val'); cid = p.camera_ids[0]
@@ -104,7 +111,7 @@ def main(data, ply, other, other_level, mpu, out, long=480, nviews=26):
     for r_i, row in enumerate(rows):
         for c_i, im in enumerate(row): sh.paste(im, (c_i * W, 24 + r_i * H))
     sh.save(f'{out}/cleanup_sheet.jpg', quality=88)
-    for name in ('dual', 'feat', 'both'): np.save(f'{out}/drop_{name}.npy', np.where(drops[name])[0].astype(np.int32))
+    for name in ('dual', 'dual_strict', 'feat', 'both'): np.save(f'{out}/drop_{name}.npy', np.where(drops[name])[0].astype(np.int32))
     rep['minutes'] = round((time.time() - T0) / 60, 1); json.dump(rep, open(f'{out}/cleanup_report.json', 'w'), indent=1)
     say('CLEANUP', json.dumps(rep))
 
