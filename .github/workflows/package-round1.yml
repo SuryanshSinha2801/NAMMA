@@ -1,0 +1,29 @@
+name: Package NAMMA Round 1 reproducibility folder
+on:
+  push:
+    branches:
+      - claude/wonderful-cori-i3fn41
+    paths:
+      - "test/**"
+      - "docs/CAPTURE_GUIDE.md"
+      - ".github/workflows/package-round1.yml"
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Drive-ready ZIP
+        run: |
+          mkdir -p dist
+          zip -r -9 dist/NAMMA_Round1_Reproducibility_Package.zip \
+            test docs/CAPTURE_GUIDE.md
+          sha256sum dist/NAMMA_Round1_Reproducibility_Package.zip
+          unzip -l dist/NAMMA_Round1_Reproducibility_Package.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NAMMA_Round1_Reproducibility_Package
+          path: dist/NAMMA_Round1_Reproducibility_Package.zip
+          if-no-files-found: error
+          retention-days: 7
