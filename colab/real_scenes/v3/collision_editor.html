@@ -18,6 +18,7 @@ import {GLTFExporter} from "three/addons/exporters/GLTFExporter.js";
 const DATA={type:"dataset",name:"anasrazy/namma-v3-out"},SPACE={type:"space",name:"anasrazy/namma-tour"};
 const RUN="20261031-1528",FOLDER="20261031-1528-c83619ed2c647e9986fe";
 const MESH_PATH=RUN+"/mesh/mesh.glb",EDITED_PATH=RUN+"/mesh/mesh-edited.glb",PLAN_PATH=RUN+"/tour_v2/plan.json";
+const DATA_COLLISION_PATH=RUN+"/tour_v2/collision.glb",DATA_HTML_PATH=RUN+"/tour_v2/index.html";
 const COLLISION_PATH=FOLDER+"/collision.glb",HTML_PATH=FOLDER+"/index.html";
 const TOUR_URL="https://anasrazy-namma-tour.static.hf.space/"+FOLDER+"/index.html";
 const $=id=>document.getElementById(id);let token=null,meshRoot=null,boundaryRoot=null,pageHtml="",worldScale=1,mode="erase",dirty=false,busy=false,undo=[],redo=[],gesture=[],erasedTotal=0,states=[];
@@ -134,12 +135,27 @@ $("apply").onclick=async()=>{
   combined=new T.Group();combined.add(boundaryRoot.clone(true));combined.add(meshRoot.clone(true));
   const liveCollision=await exportObject(combined);
   if(editedMesh.size<100||liveCollision.size<100)throw new Error("Exported collision file is unexpectedly small");
-  say("Saving edited 2DGS mesh to results dataset…");
-  await uploadFiles({repo:DATA,accessToken:token,files:[{path:EDITED_PATH,content:editedMesh}],commitTitle:"Save edited 2DGS collision mesh",commitDescription:"Browser-edited copy of mesh.glb. Original mesh.glb remains untouched."});
-  say("Updating the existing tour collision while retaining locked room boundaries…");
-  const updatedHtml=cacheBust(pageHtml);
-  await uploadFiles({repo:SPACE,accessToken:token,files:[{path:COLLISION_PATH,content:liveCollision},{path:HTML_PATH,content:new Blob([updatedHtml],{type:"text/html"})}],commitTitle:"Apply edited 2DGS collision to NAMMA tour",commitDescription:"Updated editable 2DGS mesh collision; original room and wall boundaries were retained."});
-  pageHtml=updatedHtml;dirty=false;say("Applied! The same live tour link now uses your edited 2DGS mesh. Refresh the tour to reload collision.");toast("Saved edited mesh and updated the existing tour.");
+  // Never reuse pageHtml captured when the editor opened: the live tour may have been
+  // upgraded while this editor tab stayed open. Fetch its current page at Apply time.
+  say("Fetching the latest live viewer page before saving…");
+  const livePageFile=await file(HTML_PATH,SPACE);
+  const latestHtml=await livePageFile.text();
+  if(!latestHtml.includes("sse-bootstrap")||!latestHtml.includes("index.js"))
+      throw new Error("The current live tour page does not look like the expected SuperSplat viewer; refusing to overwrite it.");
+  if(!latestHtml.includes("nm-load")) say("Warning: the current live page has no NAMMA loader marker; preserving it unchanged except for the collision URL.");
+  const updatedHtml=cacheBust(latestHtml);
+  say("Saving edited mesh, collision and current viewer page to results dataset…");
+  await uploadFiles({repo:DATA,accessToken:token,files:[
+    {path:EDITED_PATH,content:editedMesh},
+    {path:DATA_COLLISION_PATH,content:liveCollision},
+    {path:DATA_HTML_PATH,content:new Blob([updatedHtml],{type:"text/html"})}
+  ],commitTitle:"Save edited 2DGS collision and current tour viewer",commitDescription:"Saved edited mesh, combined collision, and the latest live viewer HTML together. Original source 2DGS mesh remains untouched."});
+  say("Applying the collision to the existing live tour while preserving its latest viewer…");
+  await uploadFiles({repo:SPACE,accessToken:token,files:[
+    {path:COLLISION_PATH,content:liveCollision},
+    {path:HTML_PATH,content:new Blob([updatedHtml],{type:"text/html"})}
+  ],commitTitle:"Apply edited 2DGS collision without reverting viewer",commitDescription:"Updated only collision.glb and the freshly fetched latest viewer HTML with a collision cache-buster. index.js and index.css were not overwritten."});
+  pageHtml=updatedHtml;dirty=false;say("Applied! Edited 2DGS mesh and latest viewer are saved to the dataset and live tour. Refresh the existing tour link.");toast("Saved collision and preserved the latest viewer.");
  }catch(e){say("Apply failed: "+(e.message||e));}
  finally{rawClone=null;combined=null;setBusy(false);buttons()}
 };
