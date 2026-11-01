@@ -1,13 +1,17 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NAMMA · 2DGS Mesh Collision Editor</title><script type="importmap">{"imports":{"@huggingface/hub":"https://cdn.jsdelivr.net/npm/@huggingface/hub@2.11.2/+esm","three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NAMMA · 2DGS Mesh Collision Editor</title><script type="importmap">{"imports":{"@huggingface/hub":"https://cdn.jsdelivr.net/npm/@huggingface/hub@2.11.2/+esm","three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.1/build/index.module.js"}}</script><style>
 *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#11151a;color:#e8edf2;font:14px system-ui}header,nav,footer{background:#1a2027;border-color:#303944;border-style:solid;border-width:0 0 1px;padding:11px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}header{justify-content:space-between}h1{font-size:15px;margin:0}button{background:#29313a;color:#eef;border:1px solid #414c58;border-radius:8px;padding:9px 13px;cursor:pointer}button:disabled{opacity:.4;cursor:default}.active{background:#704b2e;border-color:#c08a57}.primary{background:#986238;border-color:#d29a60;font-weight:700}a{color:#e8b77f;text-decoration:none}#view{position:absolute;inset:112px 0 35px}canvas{display:block;width:100%;height:100%;touch-action:none}footer{position:absolute;bottom:0;width:100%;font-size:11px;color:#9eabb8;border-width:1px 0 0}#status{flex:1}.auth{position:absolute;inset:0;background:#11151a;display:grid;place-items:center;z-index:5}.card{width:min(460px,90vw);padding:26px;background:#1a2027;border:1px solid #35404c;border-radius:16px;line-height:1.6}.card h2{font-size:20px}.card button{width:100%;background:#986238;margin-top:12px}.muted{color:#9eabb8;font-size:12px}.tip{position:absolute;left:14px;bottom:48px;padding:9px 12px;background:#1a2027dd;border:1px solid #35404c;border-radius:8px;color:#aeb8c2;font-size:11px;pointer-events:none;max-width:420px}#count{font-size:11px;color:#aeb8c2;margin-left:auto}.key{color:#e8b77f}
 </style></head><body>
 <header><h1>NAMMA · 2DGS Mesh Collision Editor</h1><div><span id="who" class="muted"></span>　<a id="tour" target="_blank" rel="noopener">Open same live tour ↗</a></div></header>
 <nav><button id="erase" class="active">Mesh eraser</button><button id="orbit">Orbit</button><label class="muted">Brush <input id="radius" type="range" min=".08" max="1.8" step=".02" value=".36"> <span id="rv">0.36</span></label><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="restore" disabled>Restore original mesh</button><button id="reload" disabled>Reload assets</button><button id="apply" class="primary" disabled>Apply mesh to live tour</button><span id="count"></span></nav>
-<div id="view"></div><div class="tip"><span class="key">Editable:</span> orange 2DGS mesh only. <span class="key">Locked:</span> existing room/wall boundaries. Drag on the 2DGS mesh to erase; Orbit to rotate. Apply updates the same tour link.</div><footer><span id="status">Sign in to load the 2DGS collision mesh.</span></footer>
+<div id="view"></div><div class="tip"><span class="key">Editable:</span> 2DGS mesh only. <span class="key">Locked:</span> existing room/wall boundaries. Drag on the 2DGS mesh to erase; Orbit to rotate. Apply updates the same tour link.</div><footer><span id="status">Sign in to load the 2DGS collision mesh.</span></footer>
 <div class="auth" id="auth"><div class="card"><h2>Sign in to edit the 2DGS mesh</h2><p>This editor loads <b>20261031-1528/mesh/mesh.glb</b> from your results dataset. It does <b>not</b> erase room or wall boundaries. Those stay visible and are preserved when applying the edited mesh to your existing tour.</p><button id="login">Sign in with Hugging Face</button><p class="muted">The original 2DGS mesh remains untouched. Edited copies are saved separately, and Restore original reloads the source mesh.</p></div></div>
 <script type="module">
 import {oauthLoginUrl,oauthHandleRedirectIfPresent,whoAmI,downloadFile,uploadFiles} from "@huggingface/hub";
 import * as T from "three";
+import {acceleratedRaycast,computeBoundsTree,disposeBoundsTree} from "three-mesh-bvh";
+T.Mesh.prototype.raycast=acceleratedRaycast;
+T.BufferGeometry.prototype.computeBoundsTree=computeBoundsTree;
+T.BufferGeometry.prototype.disposeBoundsTree=disposeBoundsTree;
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {GLTFExporter} from "three/addons/exporters/GLTFExporter.js";
@@ -32,10 +36,11 @@ function vecAttr(a,i,v){v.fromBufferAttribute(a,i);return v}
 function fit(){const box=new T.Box3();if(meshRoot)box.expandByObject(meshRoot);if(boundaryRoot)box.expandByObject(boundaryRoot);const size=box.getSize(new T.Vector3()),center=box.getCenter(new T.Vector3()),r=Math.max(size.x,size.y,size.z,1);controls.target.copy(center);camera.position.copy(center).add(new T.Vector3(r*1.4,r,r*1.6));camera.near=r/1000;camera.far=r*30;camera.updateProjectionMatrix();controls.update()}
 function loadGlb(blob){return blob.arrayBuffer().then(buf=>new Promise((ok,no)=>new GLTFLoader().parse(buf,"",g=>ok(g.scene),no)))}
 async function file(path,repo){const f=await downloadFile({repo,path,accessToken:token});if(!f)throw new Error("Missing file: "+path);return f}
-function disposeRoot(r){if(!r)return;r.traverse(o=>{if(o.isMesh&&o.geometry)o.geometry.dispose()});scene.remove(r)}
+function disposeRoot(r){if(!r)return;if(r===meshRoot){for(const st of states){if(st.source!==st.mesh.geometry){if(st.source.disposeBoundsTree)st.source.disposeBoundsTree();st.source.dispose()}}}r.traverse(o=>{if(o.isMesh&&o.geometry){if(o.geometry.disposeBoundsTree)o.geometry.disposeBoundsTree();o.geometry.dispose()}});scene.remove(r)}
 function materialAt(g,offset){for(const group of g.groups||[])if(offset>=group.start&&offset<group.start+group.count)return group.materialIndex||0;return 0}
 function buildState(mesh){
  const source=mesh.geometry,position=source.attributes.position;if(!position)throw new Error("Mesh has no position attribute");
+ if(source.computeBoundsTree)source.computeBoundsTree();
  const indexed=source.index?source.index.array:null,faceCount=indexed?indexed.length/3:position.count/3;
  const active=new Uint8Array(faceCount);active.fill(1);const materials=new Uint16Array(faceCount);
  for(let f=0;f<faceCount;f++)materials[f]=materialAt(source,f*3);
@@ -64,16 +69,16 @@ function rebuildState(st){
   if(runMat===null){runMat=mat;runStart=faceStart}else if(mat!==runMat){g.addGroup(runStart,faceStart-runStart,runMat);runStart=faceStart;runMat=mat}
  }
  if(runMat!==null)g.addGroup(runStart,p-runStart,runMat);
- g.setIndex(new T.BufferAttribute(index,1));g.computeBoundingBox();g.computeBoundingSphere();
- const previous=st.mesh.geometry;st.mesh.geometry=g;if(previous!==st.source)previous.dispose();
+ g.setIndex(new T.BufferAttribute(index,1));g.computeBoundingBox();g.computeBoundingSphere();if(g.computeBoundsTree)g.computeBoundsTree();
+ const previous=st.mesh.geometry;st.mesh.geometry=g;if(previous!==st.source){if(previous.disposeBoundsTree)previous.disposeBoundsTree();previous.dispose()}
 }
 async function loadAssets(){
  setBusy(true,"Loading 2DGS mesh and locked room boundaries…");
  try{
-  const [meshFile,boundaryFile,htmlFile,planFile]=await Promise.all([
-   file(MESH_PATH,DATA),file(COLLISION_PATH,SPACE),file(HTML_PATH,SPACE),file(PLAN_PATH,DATA)
+  const [meshFile,boundaryFile,htmlFile,planFile,metaFile]=await Promise.all([
+   file(MESH_PATH,DATA),file(COLLISION_PATH,SPACE),file(HTML_PATH,SPACE),file(PLAN_PATH,DATA),file(RUN+"/mesh/mesh.json",DATA)
   ]);
-  const plan=JSON.parse(await planFile.text());worldScale=Number(plan.scale)||1;pageHtml=await htmlFile.text();
+  const plan=JSON.parse(await planFile.text()),meta=JSON.parse(await metaFile.text());if(meta.kind!=="2dgs")throw new Error("The selected source is not a 2DGS mesh");worldScale=Number(plan.scale)||1;pageHtml=await htmlFile.text();
   const raw=new Blob([await meshFile.arrayBuffer()],{type:"model/gltf-binary"});
   const [mesh,boundary]=await Promise.all([loadGlb(raw),loadGlb(boundaryFile)]);
   meshRoot=mesh;meshRoot.scale.setScalar(worldScale);meshRoot.updateMatrixWorld(true);
@@ -136,7 +141,7 @@ $("apply").onclick=async()=>{
   await uploadFiles({repo:SPACE,accessToken:token,files:[{path:COLLISION_PATH,content:liveCollision},{path:HTML_PATH,content:new Blob([updatedHtml],{type:"text/html"})}],commitTitle:"Apply edited 2DGS collision to NAMMA tour",commitDescription:"Updated editable 2DGS mesh collision; original room and wall boundaries were retained."});
   pageHtml=updatedHtml;dirty=false;say("Applied! The same live tour link now uses your edited 2DGS mesh. Refresh the tour to reload collision.");toast("Saved edited mesh and updated the existing tour.");
  }catch(e){say("Apply failed: "+(e.message||e));}
- finally{if(rawClone)disposeRoot(rawClone);if(combined)disposeRoot(combined);setBusy(false);buttons()}
+ finally{rawClone=null;combined=null;setBusy(false);buttons()}
 };
 $("restore").onclick=async()=>{
  if(!confirm("Reload the original, unedited 2DGS mesh from the results dataset? The boundary collision stays as it is. Click Apply to restore it on the live tour."))return;
