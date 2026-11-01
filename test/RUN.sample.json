@@ -1,8 +1,8 @@
 {
-  "n": 1,
+  "n": 2,
   "collect": false,
   "source": "github:test/sample_data/lobby_clip30.mp4",
-  "kernel": "namma-r1-sample",
+  "kernel": "namma-r1-sample-v2",
   "kaggle_dataset": "namma-r1-sample",
   "env": {
     "NFRAMES": "120",
@@ -12,5 +12,5 @@
     "VARIANTS": "[[\"full\",3000,300000],[\"geometry\",3000,300000,\"2dgs\"]]"
   },
   "scene": "NAMMA Round 1 sample video: lobby_clip30.mp4",
-  "note": "End-to-end smoke test through the production GitHub -> Kaggle API -> NVIDIA T4 kernel -> Hugging Face results pipeline. Uses a separate sample dataset and kernel and does not change production RUN.json."
+  "note": "Retry after Kaggle returned 409 Conflict while creating namma-r1-sample kernel. Input dataset namma-r1-sample was successfully uploaded and marked ready; this uses a fresh kernel slug to test the same pipeline."
 }
