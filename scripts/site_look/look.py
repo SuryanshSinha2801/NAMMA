@@ -91,7 +91,7 @@ def assert_tour(page, url, rec, k):
     Loaded, no script errors, viewer code present; every spot's view matches its real photo; walk mode at every spot is not blurred."""
     from PIL import Image
     import io, numpy as np
-    fails, warns = [], []; base = url.split('index.html')[0]   # fails roll the publish back; warnings are reported (not worse than before); get = lambda f: page.request.get(base + f, timeout=60000)
+    fails, warns = [], []; base = url.split('index.html')[0]; get = lambda f: page.request.get(base + f, timeout=60000)   # fails roll the publish back; warnings are reported (not worse than before)
     if rec.get('load_wait_error'): fails.append(f"the room did not load in {int(os.environ.get('LOAD_WAIT_S', 600)) // 60} min")
     if rec.get('page_errors'): fails.append('script errors: ' + '; '.join(rec['page_errors'][:3]))
     try:
