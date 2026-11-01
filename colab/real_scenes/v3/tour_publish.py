@@ -140,7 +140,7 @@ if __name__ == '__main__':
     fp, co, rb, hd, rs = ('floorplan' in sys.argv[2:], 'collision' in sys.argv[2:], 'rebuild' in sys.argv[2:],
                           'head' in sys.argv[2:], 'respot' in sys.argv[2:])
     rs = rs or ((hd or rb) and 'norespot' not in sys.argv[2:])      # every page update repairs spots + field of view itself (checked, safe)
-    extra = ([f'{run}/full/{x}' for x in ('model.ply', 'level.json', 'nav.json')] if fp or rb else []) + ([f'{run}/mesh/{x}' for x in ('mesh.glb', 'mesh.json')] if co or rb else [])
+    extra = ([f'{run}/full/{x}' for x in ('model.ply', 'level.json', 'nav.json')] if fp or rb else []) + ([f'{run}/mesh/{x}' for x in ('mesh.glb', 'mesh.json', 'mesh-edited.glb')] if co or rb else [])
     if rb and os.environ.get('TOUR_MODEL'): extra.append(f"{run}/{os.environ['TOUR_MODEL']}")
     if rs: extra += [f'{run}/sparse/**', f'{run}/full/level.json']
     if rb and os.environ.get('TOUR_MODEL'):                                               # model still being made by another job: wait (max 90 min)
@@ -165,8 +165,8 @@ if __name__ == '__main__':
         api.upload_file(path_or_fileobj=f'{tour}/collision.glb', path_in_repo=f'{run}/{src}/collision.glb', repo_id=repo, repo_type='dataset')   # the tour being updated (was always tour/)
     if rb:                                                                                # scene file again from the model (current settings)
         import subprocess; W = os.path.abspath('st')
-        subprocess.run(f'mkdir -p {W} && cd {W} && npm init -y >/dev/null && npm i -s --no-audit --no-fund playcanvas@2.23.2 '
-                       '@playcanvas/supersplat-viewer@1.41.0 @playcanvas/splat-transform@3.10.3', shell=True, check=True)   # 1.41: streamed LOD
+        subprocess.run(f'mkdir -p {W} && cd {W} && npm init -y >/dev/null && npm i -s --no-audit --no-fund playcanvas@2.23.3 '
+                       '@playcanvas/supersplat-viewer@1.42.0 @playcanvas/splat-transform@3.10.3', shell=True, check=True)   # 1.42: latest viewer release; streamed LOD
         for f in ('scene.compressed.ply', 'scene.sog'):
             if os.path.exists(f'{tour}/{f}'): os.remove(f'{tour}/{f}')
         shutil.rmtree(f'{tour}/lod', ignore_errors=True)
