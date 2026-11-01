@@ -25,8 +25,8 @@ jobs:
           kaggle datasets status suryanshsinha28/namma-r1-sample
           echo "DATASET_STATUS_EXIT=$?"
           echo "=== Sample kernel status ==="
-          kaggle kernels status suryanshsinha28/namma-r1-quick-v3
+          kaggle kernels status suryanshsinha28/namma-r1-quick-v4
           echo "KERNEL_STATUS_EXIT=$?"
           echo "=== Recent Kaggle kernel logs ==="
-          kaggle kernels logs suryanshsinha28/namma-r1-quick-v3
+          kaggle kernels logs suryanshsinha28/namma-r1-quick-v4
           echo "KERNEL_LOGS_EXIT=$?"
