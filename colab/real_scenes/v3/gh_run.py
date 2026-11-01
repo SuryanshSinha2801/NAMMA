@@ -113,6 +113,30 @@ else:
             json.dump(dict(title=slug, id=DS, licenses=[dict(name='other')]), open('in/dataset-metadata.json', 'w'))
             say(kg('datasets', 'create', '-p', 'in', '-q')[1][-300:]); kaggle_io.wait_ready(DS, say)
         datasets, env['SOURCE'] = [DS], f'kaggle:{slug}'
+    elif src.startswith('github:'):
+        # A repository-tracked video can be used as the reproducible sample input.
+        # The GitHub runner stages it as a private Kaggle dataset, then the same
+        # Kaggle kernel path used by normal production runs consumes it.
+        rel = src[7:]
+        root = os.path.realpath(os.getcwd())
+        video = os.path.realpath(os.path.join(root, rel))
+        if os.path.commonpath((root, video)) != root:
+            sys.exit('github: source must stay inside the checked-out repository')
+        if not os.path.isfile(video):
+            sys.exit(f'github: input file not found: {rel}')
+        if os.path.splitext(video)[1].lower() not in ('.mp4', '.mov'):
+            sys.exit('github: sample input must be an .mp4 or .mov video')
+        slug = str(cfg.get('kaggle_dataset', 'namma-r1-sample')).strip().lower()
+        if not slug or any(not (c.isalnum() or c == '-') for c in slug):
+            sys.exit('kaggle_dataset must contain only lowercase letters, digits and hyphens')
+        DS = f'{KU}/{slug}'
+        os.makedirs('in', exist_ok=True)
+        shutil.copy2(video, os.path.join('in', os.path.basename(video)))
+        say('staging repository sample as a private Kaggle input:', DS, os.path.basename(video))
+        kaggle_io.push_dataset('in', DS, 'NAMMA Round 1 Sample',
+                               f'NAMMA v3 sample input for run {cfg.get("n")}', say)
+        datasets, env['SOURCE'] = [DS], f'kaggle:{slug}'
+        info['sample_input'] = rel
     elif src.startswith('reuse:'):                                                            # an earlier run's frames + camera model
         datasets, env['REUSE'] = [], '1'; info['reuse'] = src[6:]                                # (its Kaggle output; own account)
     elif src.startswith('kaggle:'):
