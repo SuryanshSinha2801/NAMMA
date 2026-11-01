@@ -1,16 +1,16 @@
 {
-  "n": 2,
+  "n": 3,
   "collect": false,
-  "source": "github:test/sample_data/lobby_clip30.mp4",
-  "kernel": "namma-r1-sample-v2",
+  "source": "reuse:namma-r1-sample-v2",
+  "kernel": "namma-r1-quick-v3",
   "kaggle_dataset": "namma-r1-sample",
   "env": {
-    "NFRAMES": "120",
-    "LONG": "960",
-    "STEPS": "3000",
+    "THIN": "1",
+    "STEPS": "1000",
     "PREVIEW": "0",
-    "VARIANTS": "[[\"full\",3000,300000],[\"geometry\",3000,300000,\"2dgs\"]]"
+    "MESH_VOXELS": "128",
+    "VARIANTS": "[[\"full\",1000,300000],[\"geometry\",1000,300000,\"2dgs\"]]"
   },
   "scene": "NAMMA Round 1 sample video: lobby_clip30.mp4",
-  "note": "Retry after Kaggle returned 409 Conflict while creating namma-r1-sample kernel. Input dataset namma-r1-sample was successfully uploaded and marked ready; this uses a fresh kernel slug to test the same pipeline."
+  "note": "Quick QA-fixed smoke test. Reuse the previous sample's 120 frames and COLMAP cameras; 1k-step 3DGS + 2DGS; 128 voxel mesh. Confirms full model export, geometry and HF upload without repeating video decode/COLMAP. Not a quality benchmark."
 }
