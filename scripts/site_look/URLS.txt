@@ -1,3 +1,2 @@
 # plain lines: screenshot + text; "tour <url>": open it and move around inside (slow software WebGL)
-# "namma <run> [url file]": one of our own tours, link read from the private results dataset (spots: 30 s each)
-namma 20261031-1528 tour_v2_url.txt
+# "namma <run> [url file]": one of our own tours, link read from the private results dataset

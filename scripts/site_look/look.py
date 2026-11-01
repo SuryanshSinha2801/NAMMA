@@ -9,7 +9,9 @@ urls = [u.strip() for u in open(os.path.join(os.path.dirname(__file__), 'URLS.tx
 log = {}; SECRET = None
 for u in list(urls):                     # URLS.txt line 'namma <run> [url file]': one of our own tours (link stays private)
     m = re.fullmatch(r'namma (\S+)(?: (\S+))?', u)
-    if m: urls.remove(u); os.environ['TOUR_RUN'] = m.group(1); os.environ['TOUR_URL_NAME'] = m.group(2) or ''
+    if m:
+        urls.remove(u)
+        if not os.environ.get('TOUR_RUN'): os.environ['TOUR_RUN'] = m.group(1); os.environ['TOUR_URL_NAME'] = m.group(2) or ''   # the caller's tour wins
 if os.environ.get('TOUR_RUN'):           # our own tour: link read from the private results dataset, never printed (public logs)
     from huggingface_hub import hf_hub_download
     t = open(hf_hub_download('anasrazy/namma-v3-out', f"{os.environ['TOUR_RUN']}/{os.environ.get('TOUR_URL_NAME') or 'tour_url.txt'}", repo_type='dataset', token=os.environ['HF_TOKEN'])).read().strip()
@@ -39,6 +41,18 @@ def still(page, timeout_s=90):
         if same >= 3: return c
         last = c; page.wait_for_timeout(1000)
     return last
+
+
+def arrive(page, pos, timeout_s=180):
+    """Wait until the camera is at pos (the spot's camera, room coordinates = the viewer's) and has stopped there. Under software
+    WebGL the first frames after a jump can take seconds, so 'not moving' alone is caught before the move starts (1 Nov)."""
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        try: c = page.evaluate(CAM)
+        except Exception: c = None
+        if c is not None and sum((a - b) ** 2 for a, b in zip(c, pos)) ** 0.5 < 0.05: return still(page, 20)
+        page.wait_for_timeout(1000)
+    return None
 
 
 def view_shot(page, path):
@@ -95,7 +109,8 @@ def assert_tour(page, url, rec, k):
             fv = st['annotations'][i]['camera']['initial']['fov']                                  # the viewer: horizontal on landscape
             ff = fv if ti.get('fov_kind') == 'horizontal' else np.degrees(2 * np.arctan(np.tan(np.radians(fv) / 2) * aspect))   # the frame
             zoom = float(np.tan(np.radians(fv) / 2) / np.tan(np.radians(ff) / 2))
-            page.evaluate(f'window.viewer.selectAnnotation({i})'); cam = still(page)
+            page.evaluate(f'window.viewer.selectAnnotation({i})'); cam = arrive(page, st['annotations'][i]['camera']['initial']['position'])
+            if cam is None: fails.append(f'spot {i + 1}: the camera never arrived at the spot'); continue
             v = view_shot(page, f'{OUT}/tour{k}_v{i + 1}.jpg'); m = match(v, th, zoom)
             r = dict(spot=i + 1, match=round(m, 3), camera=cam)
             if m < 0.6: fails.append(f"spot {i + 1}: the view does not show its photo (match {m:.2f} < 0.6)")
