@@ -26,7 +26,7 @@ const scene=new T.Scene();scene.background=new T.Color(0x11151a);const camera=ne
 scene.add(new T.HemisphereLight(0xe7edf6,0x41434a,2.1));const light=new T.DirectionalLight(0xffffff,2);light.position.set(8,12,10);scene.add(light);
 const fill=new T.DirectionalLight(0x9bb9df,.5);fill.position.set(-8,4,-10);scene.add(fill);
 const brush=new T.Mesh(new T.SphereGeometry(1,20,12),new T.MeshBasicMaterial({color:0xffa45f,wireframe:true,transparent:true,opacity:.28,depthWrite:false}));brush.visible=false;scene.add(brush);
-const ray=new T.Raycaster(),mouse=new T.Vector2();const CELL=.5;
+const ray=new T.Raycaster(),mouse=new T.Vector2();ray.firstHitOnly=true;const CELL=.5;
 function say(s){$("status").textContent=s}
 function countFaces(root){let n=0;if(root)root.traverse(o=>{if(o.isMesh&&o.geometry)n+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3});return Math.round(n)}
 function buttons(){$("count").textContent=countFaces(meshRoot).toLocaleString()+" editable triangles";$("undo").disabled=busy||!undo.length;$("redo").disabled=busy||!redo.length;$("apply").disabled=busy||!dirty;$("restore").disabled=busy||!token;$("reload").disabled=busy||!token;}
