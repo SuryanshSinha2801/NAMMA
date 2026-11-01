@@ -24,6 +24,6 @@
  "head": false,
  "floorplan": false,
  "collision": false,
- "n": 38,
- "note": "house tour v2, same link: floaters in the space the filming person walked through removed from the splats and the collision mesh, wall lines across the walk dropped (owner, 1 Nov: artifacts in the air blocked walking to the other room)"
+ "n": 39,
+ "note": "house tour v2, same link: walked-space carving with the local floor (floors and low furniture under a low-held phone kept)"
 }

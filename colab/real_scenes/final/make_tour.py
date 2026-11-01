@@ -380,18 +380,30 @@ def walk_samples(path, step=0.05, jump=1.0):
     return np.concatenate(out)
 
 
-def walk_carve(X, path, r=0.25, below=1.2, above=0.25):
+def walk_carve(X, path, r=0.25, below=1.2, above=0.25, floor_from=None):
     """Points (room metres) inside the space the filming person walked through: a column of radius r around every point of the
-    camera path, from 1.2 m below the phone (15 cm above the floor at the 1.35 m phone height) to 25 cm above it. Nothing solid
+    camera path, from 1.2 m below the phone (but never lower than 12 cm above the local floor; only 15 cm below it where the
+    phone was not at walking height, 1.0-1.8 m above the floor, e.g. held low over a table) to 25 cm above it. Nothing solid
     can be there (the person and the phone were), so splats there are floaters and collision there is wrong (owner, 1 Nov:
-    'artifacts in the air not allowing me to go to the other room')."""
+    'artifacts in the air not allowing me to go to the other room'). The local floor (lowest dense layer within 0.5 m, 3rd
+    percentile height of floor_from, default X) keeps floors and low furniture when the phone was held low."""
     from scipy.spatial import cKDTree
     S = walk_samples(path); X = np.asarray(X, float); mask = np.zeros(len(X), bool)
     if not len(X): return mask
-    tree = cKDTree(X[:, [0, 2]])
+    F = X if floor_from is None else np.asarray(floor_from, float)
+    tree = cKDTree(X[:, [0, 2]]); ftree = cKDTree(F[:, [0, 2]])
+    every = max(1, len(S) // 4000); floor = np.full(len(S), -np.inf)          # local floor, every ~0.5 m, filled to all samples
+    for j in range(0, len(S), every):
+        nb = ftree.query_ball_point(S[j, [0, 2]], 0.5)
+        if len(nb) > 20:
+            y = F[nb, 1]; y = y[y < S[j, 1]]
+            if len(y) > 20: floor[j:j + every] = np.percentile(y, 3)
+    lo = np.maximum(S[:, 1] - below, floor + 0.12)
+    h = S[:, 1] - floor; held = ~((h >= 1.0) & (h <= 1.8))                   # phone held low / high: the person is not under it,
+    lo[held] = S[held, 1] - 0.15                                             # so only the space round the lens is free
     for j, nb in enumerate(tree.query_ball_point(S[:, [0, 2]], r)):
         if nb:
-            nb = np.asarray(nb); y = X[nb, 1]; mask[nb[(y > S[j, 1] - below) & (y < S[j, 1] + above)]] = True
+            nb = np.asarray(nb); y = X[nb, 1]; mask[nb[(y > lo[j]) & (y < S[j, 1] + above)]] = True
     return mask
 
 
