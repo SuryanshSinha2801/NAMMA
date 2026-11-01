@@ -24,6 +24,6 @@
  "head": false,
  "floorplan": false,
  "collision": true,
- "n": 43,
- "note": "house tour v2, same link: deploy corrected editor for the actual 2DGS mesh; room and wall boundaries remain locked and preserved"
+ "n": 44,
+ "note": "house tour v2, same link: publish 2DGS mesh eraser editor; room/wall boundaries are locked and retained; Apply updates the existing tour"
 }
