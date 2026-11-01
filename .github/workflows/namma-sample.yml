@@ -6,6 +6,7 @@ on:
       - "test/RUN.sample.json"
       - "test/sample_data/**"
       - "colab/real_scenes/v3/gh_run.py"
+      - "colab/real_scenes/final/v3_qa.py"
       - ".github/workflows/namma-sample.yml"
   workflow_dispatch:
 
