@@ -1,0 +1,5 @@
+{
+  "purpose": "Read-only status probe for the Round 1 sample Kaggle input and sample GPU kernel.",
+  "dataset": "suryanshsinha28/namma-r1-sample",
+  "kernel": "suryanshsinha28/namma-r1-sample-v2"
+}
