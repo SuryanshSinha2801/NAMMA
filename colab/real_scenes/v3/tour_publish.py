@@ -67,7 +67,12 @@ def verify(api, say=print, state='publish_state.json', check='out/assert.json'):
     version back (same folder as it was, or remove a new folder and its link) and fail. 31 Oct: a broken publish stayed live for
     40 min until the owner saw a white screen; this makes that impossible."""
     st = json.load(open(state)); a = json.load(open(check)) if os.path.exists(check) else dict(ok=False, fails=['the live check did not run'])
-    if a.get('ok'): say('LIVE CHECK PASSED:', json.dumps(a.get('spots', []))); return True
+    if a.get('ok'):
+        say('LIVE CHECK PASSED:', json.dumps(a.get('spots', [])))
+        for w in a.get('warnings', []): say('WARNING (not rolled back):', w)
+        if a.get('warnings') and os.environ.get('GITHUB_STEP_SUMMARY'):
+            open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write('Live check warnings:\n' + '\n'.join(f'- {w}' for w in a['warnings']) + '\n')
+        return True
     say('LIVE CHECK FAILED:', a.get('fails')); sp, folder = st['space'], st['folder']
     from huggingface_hub import snapshot_download
     if st.get('had_folder') and st.get('prev'):                                            # the previous version of this link, exactly
