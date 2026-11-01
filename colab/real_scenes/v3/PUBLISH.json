@@ -1,6 +1,6 @@
 {
  "run": "20261031-1528",
- "rebuild": false,
+ "rebuild": true,
  "model": "solid/clean.ply",
  "sh": 3,
  "dst": "tour_v2",
@@ -24,6 +24,6 @@
  "head": false,
  "floorplan": false,
  "collision": true,
- "n": 44,
- "note": "house tour v2, same link: publish 2DGS mesh eraser editor; room/wall boundaries are locked and retained; Apply updates the existing tour"
+ "n": 45,
+ "note": "same house tour link: rebuild with SuperSplat Viewer 1.42.0 + PlayCanvas 2.23.3, central loading spinner, edited 2DGS mesh collision visible by default, room/wall boundaries retained"
 }
