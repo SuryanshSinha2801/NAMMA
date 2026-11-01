@@ -24,6 +24,6 @@
  "head": false,
  "floorplan": false,
  "collision": true,
- "n": 41,
- "note": "house tour v2, same link: rebuild original room-box and floor-plan wall collision, deploy browser editor with eraser, undo and live apply"
+ "n": 42,
+ "note": "house tour v2, same link: publish 2DGS-only mesh eraser editor; locked room/wall boundaries retained; apply writes edited 2DGS mesh to same tour"
 }
