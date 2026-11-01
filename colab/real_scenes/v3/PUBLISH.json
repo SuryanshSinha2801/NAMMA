@@ -1,10 +1,10 @@
 {
- "run": "20261026-0327",
- "rebuild": false,
- "model": "graded/model.ply",
+ "run": "20261031-1528",
+ "rebuild": true,
+ "model": "solid/clean.ply",
  "sh": 3,
- "dst": "tour_graded",
- "url_name": "tour_graded_url.txt",
+ "dst": "tour_v2",
+ "url_name": "tour_v2_url.txt",
  "prune": false,
  "keep": [
   "20261025-2336-78b302e60a23f66548af",
@@ -15,11 +15,12 @@
   "20261029-0144-ca04593384e866f8ea58",
   "20261029-0346-3e051a7249c674f6a9e3",
   "20261027-1849-world-03dd8b50eb66892b7e3b",
-  "20261027-1849-world-b16e6e0adb2f8007740e"
+  "20261027-1849-world-b16e6e0adb2f8007740e",
+  "20261026-0327-61a95d994e7c78c23d8b",
+  "20261031-1528-eae460bf984645cbebc8"
  ],
- "note": "graded run 4 tour, same link: eye height inside Settings (gear), help card on every visit, full-height jump while moving (phone), centred loading state",
- "n": 31,
- "head": true,
- "floorplan": false,
- "folder": "20261026-0327-61a95d994e7c78c23d8b"
+ "floorplan": true,
+ "head": false,
+ "n": 32,
+ "note": "whole house (one model, run-4 recipe): cleaned model (identical renders to the trained one, 69 % fewer splats; fidelity/20261101-0056), viewer 1.41 with the current UI, floor plan + walls redrawn; new link tour_v2_url.txt"
 }
