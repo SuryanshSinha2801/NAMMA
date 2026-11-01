@@ -1,6 +1,6 @@
 {
  "run": "20261031-1528",
- "rebuild": true,
+ "rebuild": false,
  "model": "solid/clean.ply",
  "sh": 3,
  "dst": "tour_v2",
@@ -21,9 +21,9 @@
   "20261031-1528-eae460bf984645cbebc8"
  ],
  "folder": "20261031-1528-c83619ed2c647e9986fe",
- "head": false,
+ "head": true,
  "floorplan": false,
  "collision": true,
- "n": 45,
- "note": "same house tour link: rebuild with SuperSplat Viewer 1.42.0 + PlayCanvas 2.23.3, central loading spinner, edited 2DGS mesh collision visible by default, room/wall boundaries retained"
+ "n": 46,
+ "note": "same house tour URL: refresh latest viewer 1.42.0, centered spinner and collision asset cache-busting; preserve edited 2DGS mesh plus room/wall boundaries"
 }
