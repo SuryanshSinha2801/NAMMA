@@ -100,7 +100,7 @@ def publish(api, user, results_repo, run, tour_dir, say=print, url_path=None):
     for k in range(1, 10):                         # a full free Space (1 GB) spills over to namma-tour-2, -3, ... (old links stay)
         try:
             lfs_rules(api, sp); remember(api, sp, folder, results_repo, url_path or f'{run}/tour_url.txt')     # for --verify / roll back
-            api.upload_folder(folder_path=tour_dir, path_in_repo=folder, repo_id=sp, repo_type='space', ignore_patterns=['plan.json']); break
+            api.upload_folder(folder_path=tour_dir, path_in_repo=folder, repo_id=sp, repo_type='space', ignore_patterns=['plan.json'], delete_patterns=['walkpath.json']); break
         except Exception as e:
             if 'Storage limit' not in str(e) or k == 9: raise
             sp = f'{user}/namma-tour-{k + 1}'; say('Space full, publishing to', sp)
@@ -167,7 +167,7 @@ if __name__ == '__main__':
         shutil.rmtree(f'{tour}/lod', ignore_errors=True)
         print('rebuilt:', make_tour.build(os.path.join(d, run), tour, f'{W}/node_modules/@playcanvas/supersplat-viewer/public',
                                           f'{W}/node_modules/.bin/splat-transform'), flush=True)
-        api.upload_folder(folder_path=tour, path_in_repo=f"{run}/{os.environ.get('TOUR_DST', 'tour')}", repo_id=repo, repo_type='dataset')
+        api.upload_folder(folder_path=tour, path_in_repo=f"{run}/{os.environ.get('TOUR_DST', 'tour')}", repo_id=repo, repo_type='dataset', delete_patterns=['walkpath.json'])
     if hd and not rb:                                                                     # page only: current viewer start options
         h = open(f'{tour}/index.html').read(); b = re.search(r'q\.set\("budget","(\d+)"\)', h)
         h = make_tour.head(h, 'lod' if os.path.isdir(f'{tour}/lod') else 'sog', int(b.group(1)) if b else 4)

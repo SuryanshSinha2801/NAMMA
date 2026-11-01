@@ -23,7 +23,7 @@
  "folder": "20261031-1528-c83619ed2c647e9986fe",
  "head": false,
  "floorplan": false,
- "collision": false,
- "n": 39,
- "note": "house tour v2, same link: walked-space carving with the local floor (floors and low furniture under a low-held phone kept)"
+ "collision": true,
+ "n": 40,
+ "note": "house tour v2, same link: restored room-box and floor-plan wall collision; no 2DGS mesh collision or walked-space carving"
 }

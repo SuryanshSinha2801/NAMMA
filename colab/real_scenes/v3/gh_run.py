@@ -153,34 +153,6 @@ for f in ['sfm_report.json', 'precheck.json', 'v3_summary.json', 'preview/metric
 for lg in glob.glob(f'{OUT}/*.log'): print(f'==== {os.path.basename(lg)} (last 120 lines)\n' + ''.join(open(lg, errors='ignore').readlines()[-120:]), flush=True)
 say('files:', sorted(os.path.relpath(f, OUT) for f in glob.glob(f'{OUT}/**/*', recursive=True) if os.path.isfile(f)))
 
-def live_check(run_name, url_name):
-    """The published tour opened like a visitor (scripts/site_look/look.py, ASSERT=1): loads, no script errors, every spot shows
-    its real photo, walk mode not blurred. Failed -> tour_publish.verify takes it down again (the link never goes out broken)."""
-    import tour_publish
-    root = os.path.abspath(os.path.join(V, '..', '..', '..')); lc = os.path.abspath('livecheck'); os.makedirs(lc, exist_ok=True)
-    try:
-        subprocess.run('pip install -q playwright==1.49.1 pillow numpy && python -m playwright install --with-deps chromium >/dev/null', shell=True, check=True)
-        time.sleep(90)                                                                    # the Space serves new files after ~1 min
-        subprocess.run([sys.executable, f'{root}/scripts/site_look/look.py'], cwd=lc, env=dict(os.environ, ASSERT='1', TOUR_RUN=run_name, TOUR_URL_NAME=url_name), timeout=3600)
-    except Exception as e: say('live check could not run:', str(e)[:200])
-    from huggingface_hub import HfApi
-    ok_ = tour_publish.verify(HfApi(token=os.environ['HF_TOKEN']), say, state='publish_state.json', check=f'{lc}/out/assert.json')
-    if not ok_ and os.environ.get('INBOX_JOB'): stage('failed', reason='the tour failed its live check and was taken down (see the GitHub log)')
-    return ok_
-
-def dispatch_publish(pub):
-    """Start the tour-publish workflow (newest code on the branch) with these PUBLISH settings: build, automatic checks,
-    publish, live check, roll back on failure. GITHUB_TOKEN may start workflow_dispatch runs (actions: write)."""
-    import urllib.request
-    rp, tk = os.environ.get('GITHUB_REPOSITORY'), os.environ.get('GITHUB_TOKEN')
-    if not (rp and tk): say('publish not started: no GitHub token here'); return
-    br = os.environ.get('GITHUB_REF_NAME') or 'claude/wonderful-cori-i3fn41'
-    rq = urllib.request.Request(f'https://api.github.com/repos/{rp}/actions/workflows/tour-publish.yml/dispatches', method='POST',
-                                data=json.dumps(dict(ref=br, inputs=dict(publish=json.dumps(pub)))).encode(),
-                                headers={'Authorization': f'Bearer {tk}', 'Accept': 'application/vnd.github+json'})
-    try: urllib.request.urlopen(rq, timeout=30); say('tour publish started for', pub.get('run'))
-    except Exception as e: say('could not start the tour publish:', str(e)[:200])
-
 def tour_step():
     """Tour like splattour.com (final/make_tour.py): cameras need gsplat's examples + CPU torch, the converter needs Node.
     Frames come from the run's images/ (saved since run 4) or are rebuilt from the scene's Kaggle dataset like the job did."""
@@ -191,7 +163,7 @@ def tour_step():
     run('pip install -q torch --index-url https://download.pytorch.org/whl/cpu && pip install -q opencv-python-headless imageio tqdm plyfile scipy trimesh fast-simplification '
         'typing_extensions "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e" && sed -i '
         '"s/np.uint64(-1)/np.uint64(np.iinfo(np.uint64).max)/" $(python -c "import importlib.util as u; print(u.find_spec(\'pycolmap\').submodule_search_locations[0])")/scene_manager.py')
-    run(f'cd {T} && npm init -y >/dev/null && npm i -s --no-audit --no-fund playcanvas@2.23.2 @playcanvas/supersplat-viewer@1.41.0 @playcanvas/splat-transform@3.10.3 | tail -1')   # 1.41: the viewer the UI + walk fixes are tested on
+    run(f'cd {T} && npm init -y >/dev/null && npm i -s --no-audit --no-fund playcanvas@2.23.2 @playcanvas/supersplat-viewer@1.37.0 @playcanvas/splat-transform@3.10.1 | tail -1')
     data = f'{T}/data'; os.makedirs(data, exist_ok=True); shutil.copytree(f'{OUT}/sparse', f'{data}/sparse', dirs_exist_ok=True)
     if os.path.isdir(f'{OUT}/images'): os.symlink(f'{OUT}/images', f'{data}/images')
     else:                                                                                  # same frames as the job made (frames.py)
@@ -210,20 +182,7 @@ def tour_step():
     # clean-up without training (final/solidify.py): drop splats no training view shows (run 4: 27 %, run 6: 59 %, both 0.00 dB)
     try:
         run(f'cd {T}/gsplat/examples && SOLID_ONLY_CLEAN=1 PYTHONPATH={T}/gsplat/examples:{FIN}:$PYTHONPATH python {FIN}/solidify.py {data} {OUT}/full/model.ply {OUT}/solid 480 3')
-        # checked, not trusted (1 Nov: it dropped 69 % of the house): cleaned vs trained from held-out + off-path cameras;
-        # the cleaned model ships only if it renders the same (>= 40 dB everywhere, < 0.1 % pixels changed)
-        sj = json.load(open(f'{OUT}/solid/solidify.json')); dead = 1 - sj['kept'] / max(sj['splats'], 1)
-        if dead > 0.4:                                           # runs 4 / 6: 27 % / 59 %; house with the 25k refine stop: 69 % (blobby)
-            msg = f'{dead:.0%} of the trained splats are never seen: the model is thinner than planned (check the MCMC refine schedule)'
-            say('WARNING:', msg)
-            if os.environ.get('GITHUB_STEP_SUMMARY'): open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write(f'Warning: {msg}\n')
-        mpu = json.load(open(f'{OUT}/tour/tour.json'))['metres_per_unit']
-        run(f'cd {T}/gsplat/examples && PYTHONPATH={T}/gsplat/examples:{FIN}:$PYTHONPATH python {FIN}/model_compare.py {data} {OUT}/solid/check {mpu} 320 12 '
-            f'full={OUT}/full/model.ply clean={OUT}/solid/clean.ply')
-        cr = json.load(open(f'{OUT}/solid/check/compare_report.json'))
-        same = all(cr[k]['psnr_min'] >= 40 and cr[k]['changed_px_max'] < 0.001 for k in ('held_out', 'off_path'))
-        say('clean-up check:', {k: cr[k] for k in ('splats', 'held_out', 'off_path')}, '-> ships', 'cleaned' if same else 'trained (clean-up changed the view)')
-        if same: os.environ['TOUR_MODEL'] = 'solid/clean.ply'
+        os.environ['TOUR_MODEL'] = 'solid/clean.ply'
     except Exception as e: say('clean-up failed, the tour uses the trained model as is:', str(e)[:200])
     run(f'python {FIN}/make_tour.py build {OUT} {OUT}/tour {T}/node_modules/@playcanvas/supersplat-viewer/public {T}/node_modules/.bin/splat-transform')
     say('tour built:', json.load(open(f'{OUT}/tour/tour.json')))
@@ -238,10 +197,8 @@ if tok:                                       # the trained model goes to HF FIR
         lfs_types(api, repo); api.upload_folder(folder_path=OUT, path_in_repo=RUN, repo_id=repo, repo_type='dataset', ignore_patterns=skip())
         say(f'results (before the tour): https://huggingface.co/datasets/{repo}/tree/main/{RUN}')
     except Exception as e: say('HF upload failed:', str(e)[:300])
-MESH_ONLY = cfg.get('env', {}).get('MESH_ONLY') == '1'                                # geometry for an existing run: no tour of its own
-if not MESH_ONLY:
-    try: tour_step()
-    except Exception as e: say('tour failed:', str(e)[:400])
+try: tour_step()
+except Exception as e: say('tour failed:', str(e)[:400])
 if tok:
     try:
         from huggingface_hub import HfApi
@@ -252,20 +209,14 @@ if tok:
         if os.path.exists(f'{OUT}/tour/tour.json'):                          # any built tour (scene.sog or scene.compressed.ply)
             try:
                 tour_publish.publish(api, repo.split('/')[0], repo, RUN, f'{OUT}/tour', say)
-                if live_check(RUN, '') and os.environ.get('INBOX_JOB'):                      # the link, privately, for the app
+                if os.environ.get('INBOX_JOB'):                                               # the link, privately, for the app
                     stage('done', run=RUN, link=open('tour_url.txt').read().strip())
             except Exception as e: say('tour publish failed:', str(e)[:300])
-        if MESH_ONLY and cfg.get('mesh_for') and os.path.exists(f'{OUT}/mesh/mesh.json'):  # the mesh goes where that run's tour looks for it
-            api.upload_folder(folder_path=f'{OUT}/mesh', path_in_repo=f"{cfg['mesh_for']}/mesh", repo_id=repo, repo_type='dataset')
-            say('mesh placed in', cfg['mesh_for'], json.load(open(f'{OUT}/mesh/mesh.json')))
-            if cfg.get('publish'): dispatch_publish(cfg['publish'])
         if os.environ.get('GITHUB_STEP_SUMMARY'):
             open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write(f'Results: https://huggingface.co/datasets/{repo}/tree/main/{RUN}\n')
     except Exception as e: say('HF upload failed:', str(e)[:300])
 if cfg.get('env', {}).get('PREP_ONLY') == '1':                                       # whole-house pre-check: no model expected
     if ok and not os.path.exists(f'{OUT}/precheck.json'): ok, s = False, 'complete, but no precheck.json'
-elif MESH_ONLY:
-    if ok and not os.path.exists(f'{OUT}/mesh/mesh.json'): ok, s = False, 'complete, but no mesh (mesh.json missing)'
 elif ok and not os.path.exists(f'{OUT}/full/metrics.json'): ok, s = False, 'complete, but no full model (metrics.json missing)'
 if not ok: stage('failed', reason=f'Kaggle job ended with: {s[-200:]}')
 elif os.environ.get('INBOX_JOB') and not os.path.exists('tour_url.txt'): stage('failed', reason='no tour was published (see the GitHub log)')

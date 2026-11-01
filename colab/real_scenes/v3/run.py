@@ -139,10 +139,6 @@ if REUSE:
     hits = glob.glob('/kaggle/input/**/sparse/0/images.bin', recursive=True); assert hits, 'REUSE: no sparse/0/images.bin under /kaggle/input'
     R0 = os.path.dirname(os.path.dirname(os.path.dirname(hits[0]))); assert os.path.isdir(f'{R0}/images'), f'REUSE: no images/ in {R0}'
     t_fr = t_sfm = time.time(); VTOT = 0; frames_min = sfm_min = 0.0; n = take(int(os.environ.get('THIN', '1')))['frames']
-    if os.environ.get('MESH_ONLY') == '1':                                                # geometry for an existing model: its level, same frames
-        lv = [x for x in glob.glob('/kaggle/input/**/full/level.json', recursive=True) if x.startswith(R0)] or glob.glob('/kaggle/input/**/full/level.json', recursive=True)
-        assert lv, 'MESH_ONLY: no full/level.json in the reused output: the mesh could not be placed on the model'
-        os.makedirs(f'{O}/full', exist_ok=True); shutil.copy(lv[0], f'{O}/full/level.json'); say('MESH_ONLY: level from', lv[0])
 else:
     src = source(); say('source', src)
     VTOT = 0
@@ -233,10 +229,6 @@ if PREP_ONLY:                                    # plan of 30 Oct: prove a whole
     assert os.path.exists(f'{O}/precheck.json'), 'pre-check failed (see its log above)'
     say('PRE-CHECK DONE', json.load(open(f'{O}/precheck.json')).get('decision')); raise SystemExit(0)
 
-GEO_S_PER_STEP = float(os.environ.get('GEO_S_PER_STEP', 0.15))   # 2DGS speed: run 4 0.10 s/step at 500k surfels, x1.5 for bigger scenes
-if os.environ.get('MESH_ONLY') == '1':      # geometry only (house, 1 Nov): run 4's 2DGS model on the reused frames, then its mesh
-    import math; tv = rep['registered'] - math.ceil(rep['registered'] / 8)
-    VARIANTS = [['geo', min(60000, int(round(55.7 * tv))), 0, '2dgs']]; say('MESH_ONLY: training', VARIANTS)
 if os.environ.get('AUTO_STEPS') == '1':     # run 4's recipe for any size: ~83.6 steps per training view, 1.5 M splats per 37 m2
     import math, precheck, rooms
     precheck.setup(EX, D, W, O, {}, PP)
@@ -251,22 +243,11 @@ if os.environ.get('AUTO_STEPS') == '1':     # run 4's recipe for any size: ~83.6
         json.dump(dict(frames=n, train_views=tv, area_m2=round(area, 1), cap=cap, steps=steps, dry=dry, hours=round(hours, 2), left=round(left, 2)),
                   open(f'{O}/go_nogo.json', 'w'), indent=1)
         if dry['ok'] and max(dry['peak_mem_gb'].values()) <= 13 and hours <= min(9.0, left): break
-        if not REUSE and dry['ok'] and max(dry['peak_mem_gb'].values()) <= 13:      # a new video: fewer steps rather than no model
-            fit = int(((min(9.0, left) - 0.5) * 3600 / 1.1) / dry['s_per_step'])
-            if fit >= 0.6 * steps:
-                say(f'GO with fewer steps: {fit} of {steps} ({fit / steps:.0%}) fit the time left'); steps = fit
-                hours = steps * dry['s_per_step'] * 1.1 / 3600 + 0.5; break
         if not (REUSE and dry['ok']): raise SystemExit(f'NO-GO: would not finish safely ({hours:.1f} h, dry run ok={dry["ok"]}): nothing trained')
         rep = take(rep['thin'] + 1); n = rep['frames']; DEPTH = '--depth-loss' if not rep.get('frames_without_points') else ''
         for x in ('cameras.bin', 'images.bin', 'points3D.bin'): shutil.copy(f'{W}/sfm/sfm/{x}', f'{D}/sparse/0/{x}')
     else: raise SystemExit('NO-GO: still too long after thinning 4 times')
-    VARIANTS = [['full', steps, cap]]
-    if os.environ.get('NO_MESH') != '1':                 # walk collision: run 4's 2DGS geometry model (55.7 steps per view), its own GPU
-        gsteps = min(60000, int(round(55.7 * tv))); ghours = gsteps * GEO_S_PER_STEP * 1.1 / 3600   # run 4: 2016 s for 20k
-        fits = ghours <= left if NGPU >= 2 else hours + ghours <= min(9.0, left)
-        if fits: VARIANTS.append(['geo', gsteps, 0, '2dgs'])
-        say('geometry model:', f'{gsteps} steps, ~{ghours:.1f} h,', 'planned' if fits else 'does not fit: mesh from the full model\'s depth instead')
-    say('training', VARIANTS)
+    VARIANTS = [['full', steps, cap]]; say('training', VARIANTS)
 
 def start(name, steps, cap, gpu, kind='gs'):
     res = f'{W}/{name}'
@@ -279,9 +260,7 @@ def start(name, steps, cap, gpu, kind='gs'):
         po = ' --pose-opt' if 'pose' in kind else ''                                           # refine the SfM cameras while training
         cmd = (f'cd {EX} && CUDA_VISIBLE_DEVICES={gpu} {pr}{PP}:$PYTHONPATH python simple_trainer.py mcmc --data-dir {D} --data-factor 1 '
                f'--result-dir {res} --max-steps {steps} --eval-steps {steps} --save-steps {steps} --ply-steps {steps} --save-ply '
-               f'--disable-viewer --use-bilateral-grid {DEPTH} --strategy.cap-max {cap}{po} '
-               f'--strategy.refine-stop-iter {int(round(steps * 25000 / 30000))}')   # run 4's share (MCMC refreshes splats until 25k of 30k);
-               # the default 25k with the house's 71.8k steps left 47k steps of opacity decay without refreshing: 69 % dead splats, blobby (1 Nov)
+               f'--disable-viewer --use-bilateral-grid {DEPTH} --strategy.cap-max {cap}{po}')
     say(cmd); return dict(name=name, gpu=gpu, res=res, kind=kind, t=time.time(),
                           p=subprocess.Popen(cmd, shell=True, executable='/bin/bash', stdout=open(f'{res}.log', 'w'), stderr=subprocess.STDOUT))
 
@@ -324,6 +303,4 @@ shutil.copytree(f'{D}/images', f'{O}/images', dirs_exist_ok=True)               
 json.dump(dict(source=SOURCE, sfm=rep, models=S, minutes=round((time.time() - T0) / 60)), open(f'{O}/v3_summary.json', 'w'), indent=1)
 push(f'{O}/v3_summary.json', 'v3_summary.json')
 say('V3 DONE', json.dumps(S)); sh(f'ls -la {O} {O}/*/ | head -40')
-if os.environ.get('MESH_ONLY') == '1':
-    if 'mesh' not in S: raise SystemExit('MESH FAILED: no mesh (see the 2DGS and mesh logs above)')
-elif 'full' not in S: raise SystemExit('V3 FAILED: no full model (see the trainer logs above)')
+if 'full' not in S: raise SystemExit('V3 FAILED: no full model (see the trainer logs above)')

@@ -370,43 +370,6 @@ def floorplan(run, tour, M=None):
     return int(W2), int(H2), float(out_px)
 
 
-def walk_samples(path, step=0.05, jump=1.0):
-    """The filmed walk as points every 5 cm (room metres); gaps over 1 m (a cut in the video) are not bridged."""
-    P = np.asarray(path, float); out = [P[:1]]
-    for a, b in zip(P[:-1], P[1:]):
-        d = float(np.linalg.norm(b - a))
-        if 0 < d <= jump: out.append(a + np.outer(np.linspace(0, 1, max(2, int(d / step) + 1))[1:], b - a))
-        else: out.append(b[None])
-    return np.concatenate(out)
-
-
-def walk_carve(X, path, r=0.25, below=1.2, above=0.25, floor_from=None):
-    """Points (room metres) inside the space the filming person walked through: a column of radius r around every point of the
-    camera path, from 1.2 m below the phone (but never lower than 12 cm above the local floor; only 15 cm below it where the
-    phone was not at walking height, 1.0-1.8 m above the floor, e.g. held low over a table) to 25 cm above it. Nothing solid
-    can be there (the person and the phone were), so splats there are floaters and collision there is wrong (owner, 1 Nov:
-    'artifacts in the air not allowing me to go to the other room'). The local floor (lowest dense layer within 0.5 m, 3rd
-    percentile height of floor_from, default X) keeps floors and low furniture when the phone was held low."""
-    from scipy.spatial import cKDTree
-    S = walk_samples(path); X = np.asarray(X, float); mask = np.zeros(len(X), bool)
-    if not len(X): return mask
-    F = X if floor_from is None else np.asarray(floor_from, float)
-    tree = cKDTree(X[:, [0, 2]]); ftree = cKDTree(F[:, [0, 2]])
-    every = max(1, len(S) // 4000); floor = np.full(len(S), -np.inf)          # local floor, every ~0.5 m, filled to all samples
-    for j in range(0, len(S), every):
-        nb = ftree.query_ball_point(S[j, [0, 2]], 0.5)
-        if len(nb) > 20:
-            y = F[nb, 1]; y = y[y < S[j, 1]]
-            if len(y) > 20: floor[j:j + every] = np.percentile(y, 3)
-    lo = np.maximum(S[:, 1] - below, floor + 0.12)
-    h = S[:, 1] - floor; held = ~((h >= 1.0) & (h <= 1.8))                   # phone held low / high: the person is not under it,
-    lo[held] = S[held, 1] - 0.15                                             # so only the space round the lens is free
-    for j, nb in enumerate(tree.query_ball_point(S[:, [0, 2]], r)):
-        if nb:
-            nb = np.asarray(nb); y = X[nb, 1]; mask[nb[(y > lo[j]) & (y < S[j, 1] + above)]] = True
-    return mask
-
-
 def colmap_cameras(sparse, examples):
     """gsplat Parser(normalize=True)'s camtoworlds (frames in name order) and points from a COLMAP model alone: no frames, no
     pycolmap. Uses gsplat's own datasets/normalize.py from <examples>, the same steps as datasets/colmap.py (v1.5.3)."""
@@ -434,14 +397,11 @@ def respot(run, tour, examples):
     <run>/full/level.json and the tour's plan.json / settings.json / overlay.json; checks first that the cameras rebuilt here
     reproduce the tour's own walk track (same normalisation as the trainer) before changing anything."""
     C, _ = colmap_cameras(f'{run}/sparse/0', examples)
-    from thin_model import read_model
-    _, cw, _, prm = next(iter(read_model(f'{run}/sparse/0')[0].values()))                    # the lens: horizontal fov of the frames
-    fov_h = float(np.clip(np.degrees(2 * np.arctan(cw / 2 / prm[0])), 10, 140))
     M = np.array(json.load(open(f'{run}/full/level.json'))['matrix']); R, t = M[:3, :3], M[:3, 3]
     pl = json.load(open(f'{tour}/plan.json')); sc = pl['scale']; lo, hi = np.array(pl['box'][:3]), np.array(pl['box'][3:])
     st = json.load(open(f'{tour}/settings.json')); ov = json.load(open(f'{tour}/overlay.json'))
     cam = (C[:, :3, 3] @ R.T + t) * sc; fwd = C[:, :3, 2] @ R.T; fn = fwd / np.linalg.norm(fwd, axis=1, keepdims=True)
-    tr = st['animTracks'][0]; fov0 = tr['keyframes']['values']['fov'][0]; fov = fov_h; n = len(cam)
+    tr = st['animTracks'][0]; fov = tr['keyframes']['values']['fov'][0]; n = len(cam)
     keys = np.unique(np.linspace(0, n - 1, min(n, 120)).astype(int)); old = np.array(tr['keyframes']['values']['position']).reshape(-1, 3)
     r0 = max(2, n // 60); err = float(np.abs(smooth(cam, r0)[keys] - old).max())                 # the track as plan() made it
     assert len(keys) == len(old) and err < 0.01, f'cameras do not match the tour (max {err:.3f} m): not changed'
@@ -450,46 +410,13 @@ def respot(run, tour, examples):
     P = lambda a, b, i: dict(position=[round(float(x), 4) for x in a[i]], target=[round(float(x), 4) for x in a[i] + look * b[i]], fov=round(fov, 1))
     tr['keyframes']['values']['position'] = [float(x) for k in keys for x in P(cs, fs, k)['position']]
     tr['keyframes']['values']['target'] = [float(x) for k in keys for x in P(cs, fs, k)['target']]
-    tr['keyframes']['values']['fov'] = [round(fov, 1)] * len(keys)
-    for c_ in [a_['camera']['initial'] for a_ in st['annotations']] + [c_['initial'] for c_ in st.get('cameras', [])]: c_['fov'] = round(fov, 1)
-    spots = [int(sp_['frame']) if 'frame' in sp_ else int(j) for sp_, j in zip(ov['spots'], np.linspace(0, n - 1, 8).astype(int)[1:-1])]; moved = []
+    spots = np.linspace(0, n - 1, 8).astype(int)[1:-1]; moved = []
     for k, i in enumerate(spots):
         a = st['annotations'][k]; e = P(cam, fn, i); moved.append(round(float(np.linalg.norm(np.array(a['camera']['initial']['position']) - cam[i])), 2))
         a['camera']['initial'] = e; a['position'] = e['target']; ov['spots'][k].update(x=float(cam[i][0]), z=float(cam[i][2]))
     json.dump(st, open(f'{tour}/settings.json', 'w')); json.dump(ov, open(f'{tour}/overlay.json', 'w'))
-    json.dump(dict(path=np.round(cam, 3).tolist()), open(f'{tour}/walkpath.json', 'w'))
-    if os.path.exists(f'{tour}/tour.json'):
-        ti = json.load(open(f'{tour}/tour.json')); ti.update(fov=round(fov, 1), fov_kind='horizontal'); json.dump(ti, open(f'{tour}/tour.json', 'w'), indent=1)
-    print('respot: track check', round(err, 4), 'm; spots moved (m):', moved, '; walk smoothing', r0, '->', r, '; fov', fov0, '->', round(fov, 1), 'horizontal', flush=True)
-    return dict(check_m=err, moved_m=moved, smoothing=[r0, r], fov=[fov0, round(fov, 1)])
-
-
-def pick_spots(p, cam, scale, n=6):
-    """Spots spread evenly over the walk, but each one the best frame near its place (owner, 1 Nov: a spot facing a fridge door
-    from 30 cm says nothing about the house): among the frames within +-1/(4n) of the walk, the one whose SfM points are
-    farthest (median distance, metres, up to 4 m: a view into the room, not a close-up) and sharpest (Laplacian variance of the
-    frame at 320 px, against the walk's median)."""
-    from PIL import Image, ImageFilter
-    N = len(cam); anchors = np.linspace(0, N - 1, n + 2).astype(int)[1:-1]; win = max(1, N // (4 * n))
-    names = p.image_names; pts = p.points; C = p.camtoworlds; cache = {}
-    def depth(i):
-        idx = p.point_indices.get(names[i]) if hasattr(p, 'point_indices') else None
-        if idx is None or not len(idx): return 0.0
-        return float(np.clip(np.median(np.linalg.norm(pts[idx] - C[i, :3, 3], axis=1)) * scale, 0, 4.0))
-    def sharp(i):
-        if i not in cache:
-            try:
-                g = np.asarray(Image.open(p.image_paths[i]).convert('L').resize((320, 180)).filter(ImageFilter.FIND_EDGES), np.float32)
-                cache[i] = float(g.var())
-            except Exception: cache[i] = 1.0
-        return cache[i]
-    ref = np.median([sharp(i) for i in np.linspace(0, N - 1, min(N, 40)).astype(int)]) or 1.0
-    out = []
-    for a in anchors:
-        cand = range(max(0, a - win), min(N, a + win + 1), max(1, win // 6))
-        out.append(max(cand, key=lambda i: depth(i) * min(1.5, max(0.2, sharp(i) / ref))))
-    print('spots:', [(int(i), round(depth(i), 2), round(sharp(i) / ref, 2)) for i in out], flush=True)
-    return np.array(out)
+    print('respot: track check', round(err, 4), 'm; spots moved (m):', moved, '; walk smoothing', r0, '->', r, flush=True)
+    return dict(check_m=err, moved_m=moved, smoothing=[r0, r])
 
 
 def plan(examples, data, run, tour):
@@ -515,8 +442,7 @@ def plan(examples, data, run, tour):
     json.dump(dict(rotate=E.tolist(), translate=t.tolist(), scale=s, box=lo.tolist() + hi.tolist()), open(f'{tour}/plan.json', 'w'))
     room_collision(pts, h, f'{tour}/room_collision.glb')
     # cameras in room coordinates, in walk order (Parser sorts the frame names = video order)
-    K = p.Ks_dict[p.camera_ids[0]]; Wd, Hd = p.imsize_dict[p.camera_ids[0]]
-    fov = float(np.clip(np.degrees(2 * np.arctan(Wd / 2 / K[0, 0])), 10, 140))  # HORIZONTAL: the viewer's fov is horizontal on landscape screens (1 Nov: vertical gave a 1.5x zoom)
+    K = p.Ks_dict[p.camera_ids[0]]; Wd, Hd = p.imsize_dict[p.camera_ids[0]]; fov = float(np.clip(np.degrees(2 * np.arctan(Hd / 2 / K[1, 1])), 10, 120))
     r = max(2, min(6, len(cam) // 60)); cs, fs = smooth(cam, r), smooth(fwd, r); fs /= np.linalg.norm(fs, axis=1, keepdims=True)   # <= 6: see respot
     look = 0.25 * float(np.linalg.norm(hi[[0, 2]] - lo[[0, 2]]))                            # look-at distance ~ quarter of the room
     pose = lambda i: dict(position=[round(float(x), 4) for x in cs[i]], target=[round(float(x), 4) for x in cs[i] + look * fs[i]], fov=round(fov, 1))
@@ -529,7 +455,7 @@ def plan(examples, data, run, tour):
                  keyframes=dict(times=frames,
                                 values=dict(position=[float(x) for k in keys for x in pose(k)['position']],
                                             target=[float(x) for k in keys for x in pose(k)['target']], fov=[fov] * len(keys))))
-    spots = pick_spots(p, cam, s)                                                         # spread over the walk; each a wide, sharp frame
+    spots = np.linspace(0, len(cam) - 1, 8).astype(int)[1:-1]
     ann = [dict(position=exact(i)['target'], title=f'Spot {n + 1}', text='Real filmed view', camera=dict(initial=exact(i))) for n, i in enumerate(spots)]
     oann, oitems = objects_layer(run, tour, cam, fov, len(ann)); ann += oann
     settings = dict(version=2, tonemapping='none', highPrecisionRendering=False, background=dict(color=[0.08, 0.08, 0.09]),
@@ -539,14 +465,13 @@ def plan(examples, data, run, tour):
                                             fringing=dict(enabled=False, intensity=0.5)),
                     animTracks=[track], cameras=[dict(initial=pose(start))], annotations=ann, startMode='animTrack')
     json.dump(settings, open(f'{tour}/settings.json', 'w'))
-    json.dump(dict(path=np.round(cam, 3).tolist()), open(f'{tour}/walkpath.json', 'w'))   # the filmed walk (room metres): carving
     Wp, Hp, px = floorplan(run, tour, M)                                                   # top-down picture for the minimap
     from PIL import Image
     os.makedirs(f'{tour}/thumbs', exist_ok=True)
     for n, i in enumerate(spots):
         Image.open(p.image_paths[i]).convert('RGB').resize((240, int(240 * Hd / Wd))).save(f'{tour}/thumbs/spot{n + 1}.jpg', quality=82)
     overlay = dict(floor=dict(x0=float(lo[0]), z0=float(lo[2]), px=px, w=Wp, h=Hp),
-                   spots=[dict(title=a_['title'], x=float(cam[i][0]), z=float(cam[i][2]), thumb=f'thumbs/spot{n + 1}.jpg', frame=int(i)) for n, (i, a_) in enumerate(zip(spots, ann))], objects=oitems)
+                   spots=[dict(title=a_['title'], x=float(cam[i][0]), z=float(cam[i][2]), thumb=f'thumbs/spot{n + 1}.jpg') for n, (i, a_) in enumerate(zip(spots, ann))], objects=oitems)
     json.dump(overlay, open(f'{tour}/overlay.json', 'w'))
     info = dict(metres_per_unit=round(s, 4), frames=len(cam), start_frame=start, fov=round(fov, 1), room_box=[lo.round(3).tolist(), hi.round(3).tolist()], walk_seconds=dur, spots=len(spots), objects=len(oitems))
     json.dump(info, open(f'{tour}/tour.json', 'w'), indent=1); print('TOUR PLAN', json.dumps(info), flush=True)
@@ -591,21 +516,18 @@ def collision(run, tour, faces=150000):
         for x0, z0, x1, z1 in wj['walls']:
             L = float(np.hypot(x1 - x0, z1 - z0)); hgt = float(wj.get('height', 2.5))
             if L < 0.3: continue
-            if os.path.exists(f'{tour}/walkpath.json'):                                     # a wall line across the filmed walk is wrong
-                pts = np.linspace([x0, 0, z0], [x1, 0, z1], max(2, int(L / 0.05)))
-                pth = np.asarray(json.load(open(f'{tour}/walkpath.json'))['path'])
-                pts[:, 1] = 0.6; P2 = walk_samples(pth); near = np.min(np.hypot(pts[:, None, 0] - P2[None, :, 0], pts[:, None, 2] - P2[None, :, 2]), 1)
-                if near.min() < 0.2: print('wall line dropped: it crosses the filmed walk', [round(x0, 2), round(z0, 2), round(x1, 2), round(z1, 2)], flush=True); continue
             T = np.eye(4); u = np.array([x1 - x0, z1 - z0]) / L; T[[0, 2], 0] = u; T[[0, 2], 2] = [-u[1], u[0]]
             T[0, 3], T[1, 3], T[2, 3] = (x0 + x1) / 2, hgt / 2, (z0 + z1) / 2
             parts.append(trimesh.creation.box(extents=(L, hgt, 0.12), transform=T))
-    if os.path.exists(f'{run}/mesh/mesh.glb'):
+    mesh_meta = f'{run}/mesh/mesh.json'
+    mesh_kind = ''
+    if os.path.exists(mesh_meta):
+        try: mesh_kind = json.load(open(mesh_meta)).get('kind', '')
+        except Exception: pass
+    if os.path.exists(f'{run}/mesh/mesh.glb') and mesh_kind != '2dgs':
         m = trimesh.load(f'{run}/mesh/mesh.glb', force='mesh'); m.apply_scale(s)
         c = m.triangles_center; keep = np.all((c >= lo + [0, 0.08, 0]) & (c <= hi), 1)            # inside, not the floor itself
         m.update_faces(keep); m.remove_unreferenced_vertices()
-        if os.path.exists(f'{tour}/walkpath.json'):                                         # floaters made solid: not where the person walked
-            cut = walk_carve(m.triangles_center, json.load(open(f'{tour}/walkpath.json'))['path'], 0.30)
-            if cut.any(): m.update_faces(~cut); m.remove_unreferenced_vertices(); print('collision: removed', int(cut.sum()), 'faces in the walked space', flush=True)
         if len(m.faces) > faces:
             try: m = m.simplify_quadric_decimation(face_count=faces)
             except Exception as e: print('mesh simplify failed, keeping', len(m.faces), 'faces:', str(e)[:120], flush=True)
@@ -681,6 +603,8 @@ def head(html, fmt, bud=4):
 def build(run, tour, public, st='npx --no-install splat-transform'):
     """plan.json + settings.json (from plan) + the model -> a static tour folder."""
     pl = json.load(open(f'{tour}/plan.json')); E, t, b, s = pl['rotate'], pl['translate'], pl['box'], pl.get('scale', 1.0)
+    # Remove the obsolete walk-path metadata from a tour being rebuilt.
+    if os.path.exists(f'{tour}/walkpath.json'): os.remove(f'{tour}/walkpath.json')
     # The tour must show what the trained model.ply shows (owner, 30 Oct: floor, ceiling and wall patches were missing, black
     # patches). Two of our own steps deleted real structure, so both are now off by default:
     #  - the smear filter (big elongated splats are also how plain walls/ceilings are made): TOUR_SMEAR=1 to use it again;
@@ -690,13 +614,7 @@ def build(run, tour, public, st='npx --no-install splat-transform'):
     from plyfile import PlyData, PlyElement
     v = PlyData.read(f"{run}/{os.environ.get('TOUR_MODEL', 'full/model.ply')}")['vertex'].data   # TOUR_MODEL=solid/clean.ply: cleaned
     bad = smear_mask(v, b, s) if os.environ.get('TOUR_SMEAR') == '1' else np.zeros(len(v), bool)
-    lvl = f'{run}/full/level.json'; carved = 0
-    if os.environ.get('TOUR_CARVE', '1') == '1' and os.path.exists(f'{tour}/walkpath.json') and os.path.exists(lvl):
-        M = np.array(json.load(open(lvl))['matrix']); Rl, tl = M[:3, :3], M[:3, 3]
-        Xr = (np.stack([v['x'], v['y'], v['z']], 1).astype(np.float64) @ Rl.T + tl) * s       # splat centres in room metres
-        cv = walk_carve(Xr, json.load(open(f'{tour}/walkpath.json'))['path'], float(os.environ.get('TOUR_CARVE_R', 0.25)))
-        carved = int((cv & ~bad).sum()); bad |= cv
-    PlyData([PlyElement.describe(v[~bad], 'vertex')]).write(f'{tour}/clean.ply'); print(f'smears removed: {bad.sum() - carved} of {len(v)}; floaters in the walked space removed: {carved}', flush=True)
+    PlyData([PlyElement.describe(v[~bad], 'vertex')]).write(f'{tour}/clean.ply'); print(f'smears removed: {bad.sum()} of {len(v)}', flush=True)
     # colour: SOG's spherical-harmonics clustering takes hours on a CPU (150k splats: SH1 208 s, SH3 > 300 s, SH0 2 s), so the
     # tour is PlayCanvas compressed PLY with SH band 1 (view-dependent colour). Measured on run 4's held-out frames
     # (final/tour_fidelity.py, fidelity/20261027-0745) all 3 bands scored 2 dB higher, but the owner rejected that tour

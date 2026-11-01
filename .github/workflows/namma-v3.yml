@@ -16,16 +16,10 @@ concurrency:
   group: namma-v3
   cancel-in-progress: false
 
-# actions: write lets gh_run.py start tour-publish when a run only makes geometry for an existing tour (MESH_ONLY)
-permissions:
-  contents: read
-  actions: write
-
 # Kaggle jobs longer than one GitHub job (6 h): gh_run.py reports still_running and the follow-up jobs collect them.
 env:
   KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
   HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
-  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   run:
@@ -43,11 +37,10 @@ jobs:
           sparse-checkout: |
             colab/real_scenes/v3
             colab/real_scenes/final
-            scripts/site_look
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -q kaggle==2.2.5 six huggingface_hub pandas pillow   # six: kaggle 2.2.5 imports it without declaring it (1 Nov)
+      - run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
       - name: Kaggle job (input -> push -> wait -> outputs)
         id: go
         run: python colab/real_scenes/v3/gh_run.py
