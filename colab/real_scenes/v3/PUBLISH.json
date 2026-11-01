@@ -19,8 +19,10 @@
   "20261026-0327-61a95d994e7c78c23d8b",
   "20261031-1528-eae460bf984645cbebc8"
  ],
- "floorplan": true,
+ "floorplan": false,
  "head": false,
- "n": 32,
- "note": "whole house (one model, run-4 recipe): cleaned model (identical renders to the trained one, 69 % fewer splats; fidelity/20261101-0056), viewer 1.41 with the current UI, floor plan + walls redrawn; new link tour_v2_url.txt"
+ "n": 33,
+ "note": "whole house tour v2, same link: spots at the exact filmed poses (were ~1 m off on a path smoothed over 16 frames), guided walk smoothed over <= 6 frames; cleaned model, viewer 1.41, current UI",
+ "respot": true,
+ "folder": "20261031-1528-c83619ed2c647e9986fe"
 }

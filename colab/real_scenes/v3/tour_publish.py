@@ -89,10 +89,11 @@ if __name__ == '__main__':
             publish(api, user, repo, run.split('/')[-1] + '-world', pg, url_path=f'{run}/{"tour_url.txt" if k == 0 else f"tour{k + 1}_url.txt"}')
             print('published', os.path.basename(pg), 'as', 'tour_url.txt' if k == 0 else f'tour{k + 1}_url.txt', flush=True)
         sys.exit(0)
-    fp, co, rb, hd = ('floorplan' in sys.argv[2:], 'collision' in sys.argv[2:], 'rebuild' in sys.argv[2:],
-                      'head' in sys.argv[2:])
+    fp, co, rb, hd, rs = ('floorplan' in sys.argv[2:], 'collision' in sys.argv[2:], 'rebuild' in sys.argv[2:],
+                          'head' in sys.argv[2:], 'respot' in sys.argv[2:])
     extra = ([f'{run}/full/{x}' for x in ('model.ply', 'level.json', 'nav.json')] if fp or rb else []) + ([f'{run}/mesh/mesh.glb'] if co or rb else [])
     if rb and os.environ.get('TOUR_MODEL'): extra.append(f"{run}/{os.environ['TOUR_MODEL']}")
+    if rs: extra += [f'{run}/sparse/**', f'{run}/full/level.json']
     if rb and os.environ.get('TOUR_MODEL'):                                               # model still being made by another job: wait (max 90 min)
         import time; t0 = time.time()
         while not api.file_exists(repo, f"{run}/{os.environ['TOUR_MODEL']}", repo_type='dataset'):
@@ -100,7 +101,11 @@ if __name__ == '__main__':
     src = os.environ.get('TOUR_DST', 'tour') if hd and not rb else 'tour'                # 'head': the stored tour it updates
     d = snapshot_download(repo, repo_type='dataset', allow_patterns=[f'{run}/{src}/*', f'{run}/{src}/**'] + extra, local_dir='pub', token=tok)
     tour = os.path.join(d, run, src); assert os.path.exists(f'{tour}/index.html'), f'no built tour in {repo}/{run}/{src}'
-    if fp or co or rb or hd: sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'final')); import make_tour
+    if fp or co or rb or hd or rs: sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'final')); import make_tour
+    if rs:                                                                                # spots at the exact filmed poses (make_tour.respot)
+        import subprocess
+        if not os.path.isdir('gsplat'): subprocess.run('git clone -q --depth 1 -b v1.5.3 https://github.com/nerfstudio-project/gsplat gsplat', shell=True, check=True)
+        print('respot:', make_tour.respot(os.path.join(d, run), tour, os.path.abspath('gsplat/examples')), flush=True)
     if fp:
         print('floor plan redrawn:', make_tour.floorplan(os.path.join(d, run), tour), flush=True)
         for x in ('floorplan.png', 'walls.json'):

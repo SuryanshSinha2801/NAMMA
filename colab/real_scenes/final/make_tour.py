@@ -370,6 +370,55 @@ def floorplan(run, tour, M=None):
     return int(W2), int(H2), float(out_px)
 
 
+def colmap_cameras(sparse, examples):
+    """gsplat Parser(normalize=True)'s camtoworlds (frames in name order) and points from a COLMAP model alone: no frames, no
+    pycolmap. Uses gsplat's own datasets/normalize.py from <examples>, the same steps as datasets/colmap.py (v1.5.3)."""
+    import importlib.util
+    from thin_model import read_model
+    sp = importlib.util.spec_from_file_location('gs_normalize', f'{examples}/datasets/normalize.py'); N = importlib.util.module_from_spec(sp); sp.loader.exec_module(N)
+    _, ims, pts = read_model(sparse); C = []
+    for i in sorted(ims, key=lambda i: ims[i]['name']):
+        w, x, y, z, *tv = ims[i]['qt']; M = np.eye(4); M[:3, 3] = tv
+        M[:3, :3] = [[1 - 2 * y * y - 2 * z * z, 2 * x * y - 2 * w * z, 2 * z * x + 2 * w * y], [2 * x * y + 2 * w * z, 1 - 2 * x * x - 2 * z * z, 2 * y * z - 2 * w * x],
+                     [2 * z * x - 2 * w * y, 2 * y * z + 2 * w * x, 1 - 2 * x * x - 2 * y * y]]
+        C.append(M)
+    C = np.linalg.inv(np.stack(C)); P = np.array([p['xyz'] for p in pts.values()], np.float32)
+    T1 = N.similarity_from_cameras(C); C = N.transform_cameras(T1, C); P = N.transform_points(T1, P)
+    T2 = N.align_principal_axes(P); C = N.transform_cameras(T2, C); P = N.transform_points(T2, P)
+    if np.median(P[:, 2]) > np.mean(P[:, 2]):
+        T3 = np.diag([1.0, -1.0, -1.0, 1.0]); C = N.transform_cameras(T3, C); P = N.transform_points(T3, P)
+    return C, P
+
+
+def respot(run, tour, examples):
+    """Spots of a built tour moved to the exact filmed camera poses (their thumbnails), and the guided walk smoothed over at
+    most 6 frames (owner, 1 Nov, house: spots 3-5 sat ~1 m off the walk, inside furniture). plan() smoothed the path over
+    len/60 frames: fine for 411 frames (r 6), but 16 for the house's 982, which cut corners at doors. Needs <run>/sparse/0,
+    <run>/full/level.json and the tour's plan.json / settings.json / overlay.json; checks first that the cameras rebuilt here
+    reproduce the tour's own walk track (same normalisation as the trainer) before changing anything."""
+    C, _ = colmap_cameras(f'{run}/sparse/0', examples)
+    M = np.array(json.load(open(f'{run}/full/level.json'))['matrix']); R, t = M[:3, :3], M[:3, 3]
+    pl = json.load(open(f'{tour}/plan.json')); sc = pl['scale']; lo, hi = np.array(pl['box'][:3]), np.array(pl['box'][3:])
+    st = json.load(open(f'{tour}/settings.json')); ov = json.load(open(f'{tour}/overlay.json'))
+    cam = (C[:, :3, 3] @ R.T + t) * sc; fwd = C[:, :3, 2] @ R.T; fn = fwd / np.linalg.norm(fwd, axis=1, keepdims=True)
+    tr = st['animTracks'][0]; fov = tr['keyframes']['values']['fov'][0]; n = len(cam)
+    keys = np.unique(np.linspace(0, n - 1, min(n, 120)).astype(int)); old = np.array(tr['keyframes']['values']['position']).reshape(-1, 3)
+    r0 = max(2, n // 60); err = float(np.abs(smooth(cam, r0)[keys] - old).max())                 # the track as plan() made it
+    assert len(keys) == len(old) and err < 0.01, f'cameras do not match the tour (max {err:.3f} m): not changed'
+    look = 0.25 * float(np.linalg.norm(hi[[0, 2]] - lo[[0, 2]])); r = max(2, min(6, n // 60))
+    cs = smooth(cam, r); fs = smooth(fwd, r); fs /= np.linalg.norm(fs, axis=1, keepdims=True)
+    P = lambda a, b, i: dict(position=[round(float(x), 4) for x in a[i]], target=[round(float(x), 4) for x in a[i] + look * b[i]], fov=round(fov, 1))
+    tr['keyframes']['values']['position'] = [float(x) for k in keys for x in P(cs, fs, k)['position']]
+    tr['keyframes']['values']['target'] = [float(x) for k in keys for x in P(cs, fs, k)['target']]
+    spots = np.linspace(0, n - 1, 8).astype(int)[1:-1]; moved = []
+    for k, i in enumerate(spots):
+        a = st['annotations'][k]; e = P(cam, fn, i); moved.append(round(float(np.linalg.norm(np.array(a['camera']['initial']['position']) - cam[i])), 2))
+        a['camera']['initial'] = e; a['position'] = e['target']; ov['spots'][k].update(x=float(cam[i][0]), z=float(cam[i][2]))
+    json.dump(st, open(f'{tour}/settings.json', 'w')); json.dump(ov, open(f'{tour}/overlay.json', 'w'))
+    print('respot: track check', round(err, 4), 'm; spots moved (m):', moved, '; walk smoothing', r0, '->', r, flush=True)
+    return dict(check_m=err, moved_m=moved, smoothing=[r0, r])
+
+
 def plan(examples, data, run, tour):
     sys.path.insert(0, examples); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from datasets.colmap import Parser
@@ -394,9 +443,11 @@ def plan(examples, data, run, tour):
     room_collision(pts, h, f'{tour}/room_collision.glb')
     # cameras in room coordinates, in walk order (Parser sorts the frame names = video order)
     K = p.Ks_dict[p.camera_ids[0]]; Wd, Hd = p.imsize_dict[p.camera_ids[0]]; fov = float(np.clip(np.degrees(2 * np.arctan(Hd / 2 / K[1, 1])), 10, 120))
-    r = max(2, len(cam) // 60); cs, fs = smooth(cam, r), smooth(fwd, r); fs /= np.linalg.norm(fs, axis=1, keepdims=True)
+    r = max(2, min(6, len(cam) // 60)); cs, fs = smooth(cam, r), smooth(fwd, r); fs /= np.linalg.norm(fs, axis=1, keepdims=True)   # <= 6: see respot
     look = 0.25 * float(np.linalg.norm(hi[[0, 2]] - lo[[0, 2]]))                            # look-at distance ~ quarter of the room
     pose = lambda i: dict(position=[round(float(x), 4) for x in cs[i]], target=[round(float(x), 4) for x in cs[i] + look * fs[i]], fov=round(fov, 1))
+    fn = fwd / np.linalg.norm(fwd, axis=1, keepdims=True)                                 # spots: the exact filmed pose, as their thumbnail
+    exact = lambda i: dict(position=[round(float(x), 4) for x in cam[i]], target=[round(float(x), 4) for x in cam[i] + look * fn[i]], fov=round(fov, 1))
     centre = (lo + hi) / 2; start = int(np.argmin(np.linalg.norm((cam - centre)[:, [0, 2]], axis=1)))   # nearest to the middle
     keys = np.unique(np.linspace(0, len(cam) - 1, min(len(cam), 120)).astype(int)); dur = round(len(cam) / 6.0, 1)
     frames = [int(round(k / (len(cam) - 1) * dur * 30)) for k in keys]                        # keyframe times are frame numbers
@@ -405,7 +456,7 @@ def plan(examples, data, run, tour):
                                 values=dict(position=[float(x) for k in keys for x in pose(k)['position']],
                                             target=[float(x) for k in keys for x in pose(k)['target']], fov=[fov] * len(keys))))
     spots = np.linspace(0, len(cam) - 1, 8).astype(int)[1:-1]
-    ann = [dict(position=pose(i)['target'], title=f'Spot {n + 1}', text='Real filmed view', camera=dict(initial=pose(i))) for n, i in enumerate(spots)]
+    ann = [dict(position=exact(i)['target'], title=f'Spot {n + 1}', text='Real filmed view', camera=dict(initial=exact(i))) for n, i in enumerate(spots)]
     oann, oitems = objects_layer(run, tour, cam, fov, len(ann)); ann += oann
     settings = dict(version=2, tonemapping='none', highPrecisionRendering=False, background=dict(color=[0.08, 0.08, 0.09]),
                     postEffectSettings=dict(sharpness=dict(enabled=True, amount=0.2), bloom=dict(enabled=False, intensity=0.1, blurLevel=2),
@@ -420,7 +471,7 @@ def plan(examples, data, run, tour):
     for n, i in enumerate(spots):
         Image.open(p.image_paths[i]).convert('RGB').resize((240, int(240 * Hd / Wd))).save(f'{tour}/thumbs/spot{n + 1}.jpg', quality=82)
     overlay = dict(floor=dict(x0=float(lo[0]), z0=float(lo[2]), px=px, w=Wp, h=Hp),
-                   spots=[dict(title=a_['title'], x=float(cs[i][0]), z=float(cs[i][2]), thumb=f'thumbs/spot{n + 1}.jpg') for n, (i, a_) in enumerate(zip(spots, ann))], objects=oitems)
+                   spots=[dict(title=a_['title'], x=float(cam[i][0]), z=float(cam[i][2]), thumb=f'thumbs/spot{n + 1}.jpg') for n, (i, a_) in enumerate(zip(spots, ann))], objects=oitems)
     json.dump(overlay, open(f'{tour}/overlay.json', 'w'))
     info = dict(metres_per_unit=round(s, 4), frames=len(cam), start_frame=start, fov=round(fov, 1), room_box=[lo.round(3).tolist(), hi.round(3).tolist()], walk_seconds=dur, spots=len(spots), objects=len(oitems))
     json.dump(info, open(f'{tour}/tour.json', 'w'), indent=1); print('TOUR PLAN', json.dumps(info), flush=True)
@@ -606,4 +657,4 @@ def build(run, tour, public, st='npx --no-install splat-transform'):
     return info
 
 if __name__ == '__main__':
-    {'plan': plan, 'build': build, 'floorplan': floorplan, 'collision': collision, 'clean': clean}[sys.argv[1]](*sys.argv[2:])
+    {'plan': plan, 'build': build, 'floorplan': floorplan, 'collision': collision, 'clean': clean, 'respot': respot}[sys.argv[1]](*sys.argv[2:])

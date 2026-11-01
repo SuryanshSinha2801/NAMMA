@@ -30,7 +30,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
         run: |
           eval "$(python -c "import json;c=json.load(open('colab/real_scenes/v3/PUBLISH.json'));print(f'export TOUR_MODEL={c[\"model\"]}' if c.get('model') else '');print(f'export TOUR_SH={c[\"sh\"]}' if 'sh' in c else '');print(f'export INBOX_JOB={c[\"inbox_job\"]}' if c.get('inbox_job') else '');print('export TOUR_PRUNE=1' if c.get('prune') else '');print('export TOUR_KEEP=' + ','.join(c.get('keep', [])));[print(f'export {k}={c[j]}') for j, k in (('format', 'TOUR_FORMAT'), ('dst', 'TOUR_DST'), ('url_name', 'TOUR_URL_NAME'), ('lod_levels', 'TOUR_LOD_LEVELS'), ('folder', 'TOUR_FOLDER')) if c.get(j)]")"
-          python colab/real_scenes/v3/tour_publish.py $(python -c "import json;c=json.load(open('colab/real_scenes/v3/PUBLISH.json'));print(c['run'], *[k for k in ('floorplan', 'collision', 'rebuild', 'head') if c.get(k)])")
+          python colab/real_scenes/v3/tour_publish.py $(python -c "import json;c=json.load(open('colab/real_scenes/v3/PUBLISH.json'));print(c['run'], *[k for k in ('floorplan', 'collision', 'rebuild', 'head', 'respot') if c.get(k)])")
       - name: Screenshots
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
