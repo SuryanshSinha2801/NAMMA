@@ -524,14 +524,23 @@ def collision(run, tour, faces=150000):
     if os.path.exists(mesh_meta):
         try: mesh_kind = json.load(open(mesh_meta)).get('kind', '')
         except Exception: pass
-    if os.path.exists(f'{run}/mesh/mesh.glb') and mesh_kind != '2dgs':
-        m = trimesh.load(f'{run}/mesh/mesh.glb', force='mesh'); m.apply_scale(s)
-        c = m.triangles_center; keep = np.all((c >= lo + [0, 0.08, 0]) & (c <= hi), 1)            # inside, not the floor itself
+    # The browser editor saves full-resolution 2DGS edits separately. Prefer that file
+    # for the live collider; keep the source mesh untouched so Restore Original still works.
+    edited = f'{run}/mesh/mesh-edited.glb'
+    source = edited if os.path.exists(edited) else f'{run}/mesh/mesh.glb'
+    use_2dgs = os.path.exists(edited) or mesh_kind != '2dgs'
+    if os.path.exists(source) and use_2dgs:
+        m = trimesh.load(source, force='mesh'); m.apply_scale(s)
+        c = m.triangles_center
+        keep = np.all((c >= lo + [0, 0.08, 0]) & (c <= hi), 1)            # inside room, above floor slab
         m.update_faces(keep); m.remove_unreferenced_vertices()
+        print('2DGS edited collision source:' if os.path.exists(edited) else 'mesh collision source:',
+              os.path.basename(source), len(m.faces), 'faces after room crop', flush=True)
         if len(m.faces) > faces:
             try: m = m.simplify_quadric_decimation(face_count=faces)
             except Exception as e: print('mesh simplify failed, keeping', len(m.faces), 'faces:', str(e)[:120], flush=True)
         if len(m.faces): parts.append(m)
+        else: print('WARNING: 2DGS mesh had no faces inside the room box; room and wall boundaries only', flush=True)
     if parts:
         trimesh.util.concatenate(parts).export(f'{tour}/collision.glb')
         print('collision:', sum(len(x.faces) for x in parts), 'faces,', round(os.path.getsize(f'{tour}/collision.glb') / 1e6, 1), 'MB', flush=True)
@@ -593,8 +602,10 @@ def head(html, fmt, bud=4):
              'if(!d)return;if(!L){L=document.createElement("div");L.id="nm-load";L.setAttribute("role","status");'
              'L.innerHTML="<i></i><b>Loading the room</b><small>Getting everything ready\u2026</small>";d.appendChild(L);}'
              'var t=document.querySelector(".sse-loadingText"),p=t&&/(\\d+)\\s*%/.exec(t.textContent||""),m=L.querySelector("small");'
-             'if(p)m.textContent=p[1]+"%";else if(s>90&&!(v&&v.state))m.textContent="Taking longer than usual. Check your connection and reload.";'
-             'if((v&&v.state&&v.state.loaded)||s>120){d.classList.add("namma-ready","namma-show");clearInterval(k);}},200);})();</script>')
+             'var st=v&&v.state,q=new URLSearchParams(location.search);'
+             'if(st&&st.hasCollisionOverlay&&q.get("showcollision")!=="0"&&!st.collisionOverlayEnabled)st.collisionOverlayEnabled=true;'
+             'if(p)m.textContent=p[1]+"%";else if(s>90&&!(st&&st.loaded))m.textContent="Taking longer than usual. Check your connection and reload.";'
+             'if((st&&st.loaded&&(q.get("showcollision")==="0"||st.hasCollisionOverlay))||s>120){d.classList.add("namma-ready","namma-show");clearInterval(k);}},200);})();</script>')
     return html.replace('<head>', '<head>\n    <script>(function(){var q=new URLSearchParams(location.search);' + pre +
                         'if(!q.has("hpr"))q.set("hpr","1");history.replaceState(null,"",location.pathname+"?"+q.toString()+location.hash);})();</script>' +
                         cover, 1)
