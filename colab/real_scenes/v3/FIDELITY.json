@@ -1,14 +1,11 @@
 {
- "n": 5,
- "run": "20261028-0513",
- "scene": "389a460ca1995e0658e85fe8e6b520b4e88b370cd6710dfe728b1564bba31aee",
- "dl3dv_res": "images_2",
- "nframes": 900,
- "long": 1920,
- "px": 640,
- "views": 12,
- "how": "CPU check: trained model vs what the tour ships; solidify=true adds the no-training clean-up variants (final/solidify.py): change n and push",
- "solidify": true,
- "video": true,
- "solid_step": 6
+ "n": 6,
+ "run": "20261031-1528",
+ "compare": [
+  "full/model.ply",
+  "solid/clean.ply"
+ ],
+ "px": 480,
+ "views": 40,
+ "how": "compare: two models of the run rendered from the same held-out + off-path cameras, no photos (final/model_compare.py); otherwise the tour fidelity check vs real frames. Change n and push"
 }
