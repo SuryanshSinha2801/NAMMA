@@ -251,6 +251,11 @@ if os.environ.get('AUTO_STEPS') == '1':     # run 4's recipe for any size: ~83.6
         json.dump(dict(frames=n, train_views=tv, area_m2=round(area, 1), cap=cap, steps=steps, dry=dry, hours=round(hours, 2), left=round(left, 2)),
                   open(f'{O}/go_nogo.json', 'w'), indent=1)
         if dry['ok'] and max(dry['peak_mem_gb'].values()) <= 13 and hours <= min(9.0, left): break
+        if not REUSE and dry['ok'] and max(dry['peak_mem_gb'].values()) <= 13:      # a new video: fewer steps rather than no model
+            fit = int(((min(9.0, left) - 0.5) * 3600 / 1.1) / dry['s_per_step'])
+            if fit >= 0.6 * steps:
+                say(f'GO with fewer steps: {fit} of {steps} ({fit / steps:.0%}) fit the time left'); steps = fit
+                hours = steps * dry['s_per_step'] * 1.1 / 3600 + 0.5; break
         if not (REUSE and dry['ok']): raise SystemExit(f'NO-GO: would not finish safely ({hours:.1f} h, dry run ok={dry["ok"]}): nothing trained')
         rep = take(rep['thin'] + 1); n = rep['frames']; DEPTH = '--depth-loss' if not rep.get('frames_without_points') else ''
         for x in ('cameras.bin', 'images.bin', 'points3D.bin'): shutil.copy(f'{W}/sfm/sfm/{x}', f'{D}/sparse/0/{x}')
