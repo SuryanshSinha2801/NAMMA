@@ -2,5 +2,6 @@
   "purpose": "Second read-only status probe for the same sample Kaggle dataset and kernel after the GPU run had time to progress.",
   "dataset": "suryanshsinha28/namma-r1-sample",
   "kernel": "suryanshsinha28/namma-r1-sample-v2",
-  "probe": 2
+  "probe": 3,
+  "checked_at": "2026-11-01T16:08Z"
 }
