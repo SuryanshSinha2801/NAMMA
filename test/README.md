@@ -141,7 +141,7 @@ The GitHub runner handles the upload automatically:
 2. It copies the video into a temporary input folder.
 3. It creates or versions a private Kaggle Dataset using KAGGLE_API_TOKEN.
 4. It waits until Kaggle reports that dataset is ready.
-5. It attaches that dataset to the separate namma-r1-sample script kernel.
+5. It attaches that dataset to the isolated namma-r1-sample-v2 script kernel. The first slug returned a Kaggle 409 Conflict, so the reproducibility config uses a fresh kernel slug.
 6. It pushes the kernel and runs the same run.py used by production.
 7. It collects the kernel output and uploads it to Hugging Face using HF_TOKEN.
 
