@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -q kaggle==2.2.5 huggingface_hub numpy pillow opencv-python-headless playwright==1.49.1 && python -m playwright install --with-deps chromium
+      - run: pip install -q kaggle==2.2.5 six huggingface_hub numpy pillow opencv-python-headless playwright==1.49.1 && python -m playwright install --with-deps chromium
       - name: Kaggle world job + viewers
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}

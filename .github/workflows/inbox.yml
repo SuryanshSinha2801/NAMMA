@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
+      - run: pip install -q kaggle==2.2.5 six huggingface_hub pandas pillow
       - id: pick
         run: python colab/real_scenes/v3/inbox.py pick $PICK
       - id: go

@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
+      - run: pip install -q kaggle==2.2.5 six huggingface_hub pandas pillow   # six: kaggle 2.2.5 imports it without declaring it (1 Nov)
       - name: Kaggle job (input -> push -> wait -> outputs)
         id: go
         run: python colab/real_scenes/v3/gh_run.py
