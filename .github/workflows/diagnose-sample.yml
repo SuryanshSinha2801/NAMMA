@@ -27,3 +27,6 @@ jobs:
           echo "=== Sample kernel status ==="
           kaggle kernels status suryanshsinha28/namma-r1-sample-v2
           echo "KERNEL_STATUS_EXIT=$?"
+          echo "=== Recent Kaggle kernel logs ==="
+          kaggle kernels logs suryanshsinha28/namma-r1-sample-v2
+          echo "KERNEL_LOGS_EXIT=$?"
