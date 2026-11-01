@@ -24,6 +24,6 @@
  "head": true,
  "floorplan": false,
  "collision": true,
- "n": 46,
- "note": "same house tour URL: refresh latest viewer 1.42.0, centered spinner and collision asset cache-busting; preserve edited 2DGS mesh plus room/wall boundaries"
+ "n": 47,
+ "note": "same stable tour URL: redeploy fixed editor that fetches live HTML on every Apply, persists edited mesh + collision + viewer HTML in dataset; do not roll viewer back"
 }
