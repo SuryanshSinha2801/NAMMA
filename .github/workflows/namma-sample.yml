@@ -1,0 +1,88 @@
+name: NAMMA v3 sample reconstruction
+on:
+  push:
+    branches: [claude/wonderful-cori-i3fn41]
+    paths:
+      - "test/RUN.sample.json"
+      - "test/sample_data/**"
+      - "colab/real_scenes/v3/gh_run.py"
+      - ".github/workflows/namma-sample.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: namma-v3-sample
+  cancel-in-progress: false
+
+env:
+  KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+  HF_TOKEN: \${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    env:
+      RUN_JSON: test/RUN.sample.json
+      COLLECT: ""
+    outputs:
+      still_running: \${{ steps.go.outputs.still_running }}
+    steps:
+      - name: Checkout v3 runner and sample video
+        uses: actions/checkout@v4
+        with:
+          ref: claude/wonderful-cori-i3fn41
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+            test/RUN.sample.json
+            test/sample_data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Kaggle and Hugging Face clients
+        run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
+      - name: Run production GitHub-to-Kaggle pipeline
+        id: go
+        run: python colab/real_scenes/v3/gh_run.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: namma-r1-sample-run-\${{ github.run_number }}
+          path: |
+            out/
+            !out/**/*.ply
+          if-no-files-found: ignore
+          retention-days: 7
+  collect1:
+    needs: sample
+    if: needs.sample.outputs.still_running == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    env:
+      RUN_JSON: test/RUN.sample.json
+      COLLECT: "1"
+      KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
+      HF_TOKEN: \${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/wonderful-cori-i3fn41
+          sparse-checkout: |
+            colab/real_scenes/v3
+            colab/real_scenes/final
+            test/RUN.sample.json
+            test/sample_data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q kaggle==2.2.5 huggingface_hub pandas pillow
+      - run: python colab/real_scenes/v3/gh_run.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: namma-r1-sample-collect-\${{ github.run_number }}
+          path: |
+            out/
+            !out/**/*.ply
+          if-no-files-found: ignore
+          retention-days: 7

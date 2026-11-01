@@ -1,160 +1,259 @@
-# NAMMA Round 1 — setup, sample data and reconstruction
+# NAMMA v3: reproduce the production reconstruction pipeline
 
-This folder is the reproducibility package for the Techfest Namma Space Round 1 repository deliverable. It contains a sample indoor video, a safe sample run configuration and the steps needed to reproduce the v3 reconstruction pipeline.
+This is the actual production route used by NAMMA. It does not depend on a mobile application and it does not ask you to run the reconstruction on your laptop.
 
-## 1. Repository and pipeline
+A terminal command updates a run configuration in GitHub. GitHub Actions uses repository secrets to stage the video through the Kaggle API, push a GPU script kernel, collect the model outputs and upload them to a private Hugging Face dataset.
 
-- Repository: https://github.com/RazyAnas/NAMMA
-- Branch used for this pipeline: `claude/wonderful-cori-i3fn41`
-- Sample input: [`sample_data/lobby_clip30.mp4`](sample_data/lobby_clip30.mp4)
-- Sample configuration: [`RUN.sample.json`](RUN.sample.json)
-- Capture procedure: [`docs/CAPTURE_GUIDE.md`](../docs/CAPTURE_GUIDE.md)
-- Video-to-tour pipeline: [`colab/real_scenes/v3/run.py`](../colab/real_scenes/v3/run.py)
-- GitHub runner: [`colab/real_scenes/v3/gh_run.py`](../colab/real_scenes/v3/gh_run.py)
-- Workflow: [`.github/workflows/namma-v3.yml`](../.github/workflows/namma-v3.yml)
+## 1. End-to-end pipeline
 
-The production v3 path is:
+~~~text
+Terminal (Git + GitHub CLI)
+  | push test/RUN.sample.json
+  v
+GitHub Actions
+  | reads GitHub Secrets: KAGGLE_API_TOKEN + HF_TOKEN
+  | runs colab/real_scenes/v3/gh_run.py
+  | uploads repository sample as a private Kaggle Dataset
+  | creates Kaggle kernel metadata and pushes script
+  v
+Kaggle NVIDIA T4 kernel
+  | runs colab/real_scenes/v3/run.py
+  | samples frames -> solves cameras (hloc + COLMAP)
+  | trains 3DGS appearance + 2DGS geometry
+  | exports QA, metrics and mesh
+  v
+GitHub runner collects Kaggle output
+  | uploads results with Hugging Face API
+  v
+Private Hugging Face dataset: HF_USER/namma-v3-out/RUN_ID
+~~~
 
-`phone video → sharp-frame extraction → camera recovery (hloc + COLMAP) → 3DGS appearance model + 2DGS geometry model → mesh/collision export → QA and web-tour publishing`
+The sample workflow calls the same GitHub runner and Kaggle training script as production. Its only difference is that it passes test/RUN.sample.json through the RUN_JSON environment variable, so it never overwrites the production colab/real_scenes/v3/RUN.json.
 
-The training pipeline runs on Kaggle, not on a normal laptop. GitHub Actions prepares the Kaggle job, attaches the input dataset, waits for the run, collects the outputs and uploads the results to Hugging Face when a write token is configured.
+### Source files
 
-## 2. What is included in the sample folder?
+| File | Function |
+|---|---|
+| .github/workflows/namma-v3.yml | Production GitHub Actions workflow |
+| .github/workflows/namma-sample.yml | Isolated sample workflow |
+| colab/real_scenes/v3/gh_run.py | GitHub-side input staging, Kaggle orchestration and HF output upload |
+| colab/real_scenes/v3/kaggle_io.py | Kaggle account, dataset and kernel helpers |
+| colab/real_scenes/v3/run.py | Actual GPU reconstruction script |
+| colab/real_scenes/v3/kernel-metadata.json | Kaggle script kernel settings |
+| colab/real_scenes/final/frames.py | Video/frame sampling |
+| test/RUN.sample.json | Separate, non-production sample configuration |
 
-`test/sample_data/lobby_clip30.mp4` is a short lobby video already maintained in this repository. The same Git blob is also present at `colab/real_scenes/videos/lobby_clip30.mp4`; it is exposed here as a Round 1 test input so judges do not have to search through the research folders.
+## 2. Requirements
 
-This is a **pipeline smoke-test input**, not the team's own-home competition capture and not the source of the whole-house results in the technical abstract. Use your own indoor video, recorded according to the capture guide, for the primary Round 1 demonstration.
+- Git and a terminal.
+- GitHub CLI (gh), signed in to an account that can push to RazyAnas/NAMMA and manage Actions secrets.
+- Kaggle account with API access and available GPU quota.
+- Hugging Face account with a write access token.
+- GitHub Actions enabled for the repository.
 
-The repository does not attach a separate licence statement to this MP4. Do not label it as an openly licensed dataset; confirm the recording's reuse rights before redistributing it outside this repository.
+Your local laptop does not need an NVIDIA GPU. The training kernel requests the Kaggle NVIDIA T4 machine shape configured in the repository.
 
-## 3. Local checks (no GPU training)
+## 3. Clone the configured branch
 
-These commands check out the code, install the local Python dependencies, run the automated tests and extract a sample set of sharp frames. They do not run the full 3DGS/2DGS training job.
+The current workflows listen to the branch below. Use it for this version of the repository.
 
-### macOS / Linux
-
-```bash
+~~~bash
 git clone --branch claude/wonderful-cori-i3fn41 https://github.com/RazyAnas/NAMMA.git
 cd NAMMA
+~~~
 
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+Install GitHub CLI if needed:
 
-# Run the automated API / pipeline unit tests.
-python -m pytest -q tests
+~~~bash
+# macOS
+brew install gh
 
-# Extract 120 sharp frames, resized to a 960-pixel long side.
-python colab/real_scenes/final/frames.py test/sample_data/lobby_clip30.mp4 /tmp/namma-sample-frames 120 960
-```
+# Windows
+winget install --id GitHub.cli
+~~~
 
-### Windows PowerShell
+Authenticate and verify access:
 
-```powershell
-git clone --branch claude/wonderful-cori-i3fn41 https://github.com/RazyAnas/NAMMA.git
-Set-Location NAMMA
+~~~bash
+gh auth login
+gh auth status
+gh repo view RazyAnas/NAMMA
+~~~
 
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+## 4. Configure credentials once, from the terminal
 
-python -m pytest -q tests
+The workflow reads repository secrets. It never reads credentials committed in JSON or source files.
 
-python colab/real_scenes/final/frames.py test/sample_data/lobby_clip30.mp4 "$env:TEMP\namma-sample-frames" 120 960
-```
+### 4.1 Kaggle API token
 
-## 4. Full sample reconstruction on Kaggle
+Create an API token at https://www.kaggle.com/settings/api. Save the token file at the path supported by the Kaggle CLI, usually ~/.kaggle/access_token.
 
-The cloud reconstruction uses a Kaggle GPU kernel. A Kaggle account with NVIDIA T4 GPU access and internet enabled is required. The GitHub Actions runner needs the credentials below; **never put tokens in a committed JSON file**.
+Add it to GitHub without printing its contents:
 
-### 4.1 Create the Kaggle input dataset
+~~~bash
+gh secret set KAGGLE_API_TOKEN --repo RazyAnas/NAMMA < ~/.kaggle/access_token
+~~~
 
-1. Open Kaggle → Datasets → New Dataset.
-2. Upload `test/sample_data/lobby_clip30.mp4` at the dataset root.
-3. Set the dataset visibility to **Private**.
-4. Use a simple slug such as `namma-test-sample`. Your dataset ID will look like `<your-kaggle-username>/namma-test-sample`.
+The current Kaggle CLI supports the KAGGLE_API_TOKEN environment variable and the ~/.kaggle/access_token file. The production runner reads KAGGLE_API_TOKEN from GitHub Actions.
 
-The sample configuration refers to that dataset through `source`. The Kaggle upload is a one-time preparation step; subsequent runs can reuse the same private dataset.
+### 4.2 Hugging Face write token
 
-### 4.2 Configure GitHub Actions secrets
+Create a User Access Token with the write role at https://huggingface.co/settings/tokens.
 
-In the repository, open **Settings → Secrets and variables → Actions** and add:
+Set it interactively:
 
-| Secret | Purpose |
+~~~bash
+gh secret set HF_TOKEN --repo RazyAnas/NAMMA
+~~~
+
+Paste the token when prompted. Write access is needed to create/update the private namma-v3-out dataset and upload the output models and metrics.
+
+### 4.3 Verify secret names
+
+~~~bash
+gh secret list --repo RazyAnas/NAMMA
+~~~
+
+The workflow accepts these compatible names:
+
+| Primary name | Alias |
 |---|---|
-| `KAGGLE_API_TOKEN` | Kaggle API token for the account that owns or can read the private sample dataset. The existing runner also accepts `KAGGLE_TOKEN`. |
-| `HF_TOKEN` | Hugging Face write token used to store run outputs in `<HF username>/namma-v3-out`. The runner also accepts `HUGGINGFACE_WRITE_TOKEN`. |
+| KAGGLE_API_TOKEN | KAGGLE_TOKEN |
+| HF_TOKEN | HUGGINGFACE_WRITE_TOKEN |
 
-The Kaggle token is obtained from Kaggle account settings → API. The Hugging Face token needs write permission to the account's results dataset. If the Hugging Face token is omitted, the run may remain available through Kaggle output, but the private Hugging Face results upload and hosted-tour publishing will not complete.
+At least one secret from each row must exist. The command lists names only, not secret values.
 
-The Kaggle kernel metadata is already configured by the repository for a private script kernel with GPU and internet enabled. The Kaggle account still needs to be eligible for GPU sessions and have remaining quota.
+## 5. Run the included sample
 
-### 4.3 Prepare the sample run configuration
+Input video: test/sample_data/lobby_clip30.mp4
 
-1. Copy [`RUN.sample.json`](RUN.sample.json) to `colab/real_scenes/v3/RUN.json`.
-2. Replace `<YOUR_KAGGLE_USERNAME>` in `source` with the owner part of the Kaggle dataset ID.
-3. Change `n` from `0` to a positive run counter (for example, `1`). A value of `0` is deliberately a no-op.
-4. Keep the sample kernel name `namma-r1-sample`; it avoids overwriting the main `namma-v3` production kernel.
-5. Save the current `RUN.json` first and do not start the sample while another Kaggle job is using the same account/GPU quota.
+Sample config: test/RUN.sample.json
 
-Example `source` value:
+The sample source is:
 
-```json
-"source": "kaggle:anasrazy/namma-test-sample"
-```
+~~~json
+"source": "github:test/sample_data/lobby_clip30.mp4"
+~~~
 
-The supplied quick configuration requests 120 frames at 960 pixels and short 3,000-step 3DGS and 2DGS runs. This keeps the sample run smaller than a full-quality house reconstruction. It is intended to demonstrate that the pipeline can ingest the video, recover cameras, train the appearance and geometry models, and export reconstruction outputs; it is **not** a quality benchmark.
+The GitHub runner handles the upload automatically:
 
-### 4.4 Start the reconstruction
+1. It resolves the path inside the checked-out repository.
+2. It copies the video into a temporary input folder.
+3. It creates or versions a private Kaggle Dataset using KAGGLE_API_TOKEN.
+4. It waits until Kaggle reports that dataset is ready.
+5. It attaches that dataset to the separate namma-r1-sample script kernel.
+6. It pushes the kernel and runs the same run.py used by production.
+7. It collects the kernel output and uploads it to Hugging Face using HF_TOKEN.
 
-Commit and push the updated `RUN.json` to the configured branch. The existing `namma-v3` workflow watches this exact file.
+You do not need to create or upload the sample Kaggle dataset manually.
 
-```bash
-git add colab/real_scenes/v3/RUN.json
-git commit -m "Run NAMMA Round 1 sample reconstruction"
+The first sample run is triggered automatically when the sample configuration and sample workflow are committed. To run it again, increase the n field and push the config:
+
+~~~bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("test/RUN.sample.json")
+cfg = json.loads(path.read_text())
+cfg["n"] = int(cfg.get("n", 0)) + 1
+path.write_text(json.dumps(cfg, indent=2) + "\n")
+print("Sample run number:", cfg["n"])
+PY
+
+git add test/RUN.sample.json
+git commit -m "Run NAMMA v3 sample reconstruction"
 git push origin claude/wonderful-cori-i3fn41
-```
+~~~
 
-Then open the repository's **Actions** tab and select the `namma-v3 on Kaggle` run. The workflow:
-1. validates Kaggle GPU availability;
-2. prepares and pushes the Kaggle kernel with the sample dataset attached;
-3. monitors the kernel until it completes (longer jobs use collection jobs);
-4. downloads the output files and uploads them to the private Hugging Face results dataset when `HF_TOKEN` is configured;
-5. attempts to build and publish a web tour when the required model and camera outputs are present.
+This workflow passes RUN_JSON=test/RUN.sample.json to gh_run.py. The production RUN.json remains unchanged.
 
-## 5. Expected outputs
+## 6. Monitor the run from your terminal
 
-A successful run creates a timestamped folder under:
+List recent sample runs:
 
-`https://huggingface.co/datasets/<HF_USERNAME>/namma-v3-out/tree/main/<RUN_ID>/`
+~~~bash
+gh run list --repo RazyAnas/NAMMA --workflow "NAMMA v3 sample reconstruction" --limit 5
+~~~
 
-The main outputs include:
+Watch a run, replacing RUN_ID with the ID printed above:
 
-| Output | What it contains |
+~~~bash
+gh run watch RUN_ID --repo RazyAnas/NAMMA
+~~~
+
+Read the full log after completion:
+
+~~~bash
+gh run view RUN_ID --repo RazyAnas/NAMMA --log
+~~~
+
+The log reports dataset staging, Kaggle kernel push/status, number of extracted and registered frames, GPU detection, training variants, output collection and Hugging Face upload.
+
+## 7. Output location
+
+Results are uploaded to the private Hugging Face dataset:
+
+~~~text
+https://huggingface.co/datasets/HF_USER/namma-v3-out/tree/main/RUN_ID
+~~~
+
+The timestamped run folder can contain:
+
+| Output | Meaning |
 |---|---|
-| `sfm_report.json` | Number of extracted and registered frames, camera-model count, point count and reprojection information. |
-| `full/model.ply` | Full-colour 3D Gaussian Splatting model. |
-| `full/model.splat` | Viewer-oriented splat export when produced by the QA/export stage. |
-| `full/metrics.json` | Held-out image-quality and model diagnostics. |
-| `full/qa_sheet.jpg` | Real-versus-rendered and off-path visual checks. |
-| `mesh/mesh.glb` and `mesh/mesh.json` | Geometry mesh and its metadata when the geometry stage completes. |
-| `tour/` | Static web-tour files when the publish preparation succeeds. |
+| github_run.json | Input source and GitHub run metadata |
+| source.json | Resolved input video |
+| sfm_report.json | Extracted/registered frames, cameras and sparse points |
+| full/model.ply | Full-colour Gaussian model |
+| full/model.splat | Viewer-oriented splat when produced |
+| full/metrics.json | Model evaluation metrics |
+| full/qa_sheet.jpg | Visual QA sheet when produced |
+| mesh/mesh.glb | Geometry mesh when 2DGS geometry completes |
+| mesh/mesh.json | Geometry metadata |
+| tour/ | Web viewer files when tour build succeeds |
 
-A run can complete model training but fail the optional tour-publishing step. Check the GitHub Actions log and the output folder rather than assuming every listed artifact exists.
+Training may succeed even if the optional web-tour step fails. Always inspect the actual output files and logs.
 
-## 6. Reconstruct your own home
+## 8. Use a different indoor video
 
-For a competition-representative capture, replace the sample clip with your own continuous video of your home or another accessible indoor space. Follow [`docs/CAPTURE_GUIDE.md`](../docs/CAPTURE_GUIDE.md): landscape ultra-wide capture, locked exposure/focus, slow turns, overlapping wall passes, diagonals and both directions through every doorway.
+The production runner supports these input source formats:
 
-Upload that video as a private Kaggle dataset and change only the `source` value in the sample configuration to `kaggle:<username>/<your-home-dataset>`. Increase `NFRAMES`, `LONG`, training steps and splat budget only after the short sample run works.
+**A. A video or frame dataset already on Kaggle**
 
-## 7. Important reproducibility notes
+~~~json
+"source": "kaggle:KAGGLE_USERNAME/DATASET_SLUG"
+~~~
 
-- `test/RUN.sample.json` is a template. It has `n: 0` and cannot start a Kaggle run until intentionally enabled.
-- `tests/` is the automated test suite. `test/` is the Round 1 sample-data and reconstruction guide.
-- The local FastAPI prototype and the v3 Kaggle runner are separate execution paths; use the v3 runner above to reproduce the hosted Round 1 3DGS/2DGS result.
-- The short sample configuration is a smoke test, not the high-quality house recipe used for the main demonstration.
-- Do not commit `RUN.json` with real tokens, Kaggle credentials, Hugging Face tokens or other secrets.
-- The exact output metrics depend on the supplied video, registration quality, GPU runtime and training settings; no metric is promised by this sample package.
+The runner attaches the dataset to the new script kernel. It can contain a video, a frame directory or a ZIP of frames.
+
+**B. A video stored in a Hugging Face dataset**
+
+~~~json
+"source": "hf:HF_USERNAME/DATASET_NAME:PATH_TO_VIDEO"
+~~~
+
+The GitHub runner downloads the video with HF_TOKEN and stages it as a private Kaggle dataset with the Kaggle API. This works for large private phone videos, subject to GitHub runner disk limits.
+
+For a home capture, follow docs/CAPTURE_GUIDE.md. Keep the video private unless you have permission to redistribute it. Change the source in the run configuration and push it to start a new run.
+
+## 9. Configuration reference
+
+| Field | Purpose |
+|---|---|
+| n | Run counter; 0 means no run, positive means execute |
+| collect | true collects a job already running on Kaggle instead of pushing a new version |
+| source | github:, kaggle:, hf:, dl3dv: or reuse: input |
+| kernel | Kaggle script-kernel slug |
+| kaggle_dataset | Dataset slug used by the GitHub sample input adapter |
+| env | Runtime settings injected into run.py (NFRAMES, LONG, STEPS, VARIANTS, etc.) |
+
+The sample requests 120 frames, a 960-pixel long side and two short 3,000-step training variants: 3DGS appearance and 2DGS geometry. This is a smoke test, not a high-quality reconstruction benchmark.
+
+## 10. Reproducibility and safety
+
+- Never commit Kaggle or Hugging Face tokens.
+- The sample uses a separate Kaggle dataset and kernel; it does not overwrite the production kernel.
+- The sample workflow reads its own config using RUN_JSON; production RUN.json is not modified.
+- The run depends on Kaggle GPU eligibility/quota, valid tokens, input-video quality and successful camera registration.
+- The sample lobby video is already tracked elsewhere in this repository and is exposed under test/sample_data. No separate open licence statement is attached to the recording; confirm redistribution rights before publishing it outside this repository.
