@@ -606,6 +606,12 @@ def head(html, fmt, bud=4):
              'if(st&&st.hasCollisionOverlay&&q.get("showcollision")!=="0"&&!st.collisionOverlayEnabled)st.collisionOverlayEnabled=true;'
              'if(p)m.textContent=p[1]+"%";else if(s>90&&!(st&&st.loaded))m.textContent="Taking longer than usual. Check your connection and reload.";'
              'if((st&&st.loaded&&(q.get("showcollision")==="0"||st.hasCollisionOverlay))||s>120){d.classList.add("namma-ready","namma-show");clearInterval(k);}},200);})();</script>')
+    # Stable tour URLs can leave old assets in browser cache; version all changed files on each publish.
+    cache = os.urandom(6).hex()
+    html = re.sub(r'href="\./index\.css(?:\?[^"]*)?"', lambda _: f'href="./index.css?v={cache}"', html, count=1)
+    html = html.replace("from './index.js';", f"from './index.js?v={cache}';", 1)
+    html = re.sub(r'("collisionUrl"\s*:\s*")\./collision\.glb(?:\?[^"]*)?(")',
+                  lambda m: m.group(1) + f'./collision.glb?v={cache}' + m.group(2), html, count=1)
     return html.replace('<head>', '<head>\n    <script>(function(){var q=new URLSearchParams(location.search);' + pre +
                         'if(!q.has("hpr"))q.set("hpr","1");history.replaceState(null,"",location.pathname+"?"+q.toString()+location.hash);})();</script>' +
                         cover, 1)
