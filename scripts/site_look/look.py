@@ -7,6 +7,9 @@ from playwright.sync_api import sync_playwright
 OUT = 'out'; os.makedirs(OUT, exist_ok=True); MAX_TOURS = int(os.environ.get('MAX_TOURS', 4))
 urls = [u.strip() for u in open(os.path.join(os.path.dirname(__file__), 'URLS.txt')) if u.strip() and not u.startswith('#')]
 log = {}; SECRET = None
+for u in list(urls):                     # URLS.txt line 'namma <run> [url file]': one of our own tours (link stays private)
+    m = re.fullmatch(r'namma (\S+)(?: (\S+))?', u)
+    if m: urls.remove(u); os.environ['TOUR_RUN'] = m.group(1); os.environ['TOUR_URL_NAME'] = m.group(2) or ''
 if os.environ.get('TOUR_RUN'):           # our own tour: link read from the private results dataset, never printed (public logs)
     from huggingface_hub import hf_hub_download
     t = open(hf_hub_download('anasrazy/namma-v3-out', f"{os.environ['TOUR_RUN']}/{os.environ.get('TOUR_URL_NAME') or 'tour_url.txt'}", repo_type='dataset', token=os.environ['HF_TOKEN'])).read().strip()
@@ -39,9 +42,13 @@ def visit_tour(ctx, url, k):
                 page.click('#nm-fp .tog button[data-m="3d"]', timeout=30000); page.wait_for_timeout(1500); shot(page, f'tour{k}_a3_plan3d')
                 page.click('#nm-fpx', timeout=30000); page.wait_for_timeout(500)
             if page.locator('.sse-settings').count():                                     # gear: eye height row on top
-                page.click('.sse-settings', timeout=30000); page.wait_for_timeout(1500); shot(page, f'tour{k}_a4_settings')
-                rec['eye_row'] = page.locator('#nm-eyegrp').count(); page.click('.sse-settings', timeout=30000)
+                page.click('.sse-settings', timeout=30000, force=True); page.wait_for_timeout(1500); shot(page, f'tour{k}_a4_settings')
+                rec['eye_row'] = page.locator('#nm-eyegrp').count(); page.click('.sse-settings', timeout=30000, force=True)
         except Exception as e: rec['overlay_error'] = str(e)[:200]
+        try:                                                                              # every spot as a visitor sees it (photo bar)
+            for i in range(page.locator('#nm-strip button').count()):
+                page.locator('#nm-strip button').nth(i).click(timeout=30000, force=True); page.wait_for_timeout(9000); shot(page, f'tour{k}_s{i + 1}')
+        except Exception as e: rec['spots_error'] = str(e)[:200]
         W, H = page.viewport_size['width'], page.viewport_size['height']
         page.mouse.move(W / 2, H / 2); page.mouse.down(); page.mouse.move(W / 2 + 300, H / 2, steps=20); page.mouse.up(); page.wait_for_timeout(4000)
         shot(page, f'tour{k}_b_turned')
