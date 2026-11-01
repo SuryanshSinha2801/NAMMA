@@ -279,7 +279,9 @@ def start(name, steps, cap, gpu, kind='gs'):
         po = ' --pose-opt' if 'pose' in kind else ''                                           # refine the SfM cameras while training
         cmd = (f'cd {EX} && CUDA_VISIBLE_DEVICES={gpu} {pr}{PP}:$PYTHONPATH python simple_trainer.py mcmc --data-dir {D} --data-factor 1 '
                f'--result-dir {res} --max-steps {steps} --eval-steps {steps} --save-steps {steps} --ply-steps {steps} --save-ply '
-               f'--disable-viewer --use-bilateral-grid {DEPTH} --strategy.cap-max {cap}{po}')
+               f'--disable-viewer --use-bilateral-grid {DEPTH} --strategy.cap-max {cap}{po} '
+               f'--strategy.refine-stop-iter {int(round(steps * 25000 / 30000))}')   # run 4's share (MCMC refreshes splats until 25k of 30k);
+               # the default 25k with the house's 71.8k steps left 47k steps of opacity decay without refreshing: 69 % dead splats, blobby (1 Nov)
     say(cmd); return dict(name=name, gpu=gpu, res=res, kind=kind, t=time.time(),
                           p=subprocess.Popen(cmd, shell=True, executable='/bin/bash', stdout=open(f'{res}.log', 'w'), stderr=subprocess.STDOUT))
 

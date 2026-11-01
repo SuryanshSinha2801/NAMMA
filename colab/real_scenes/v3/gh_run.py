@@ -212,6 +212,11 @@ def tour_step():
         run(f'cd {T}/gsplat/examples && SOLID_ONLY_CLEAN=1 PYTHONPATH={T}/gsplat/examples:{FIN}:$PYTHONPATH python {FIN}/solidify.py {data} {OUT}/full/model.ply {OUT}/solid 480 3')
         # checked, not trusted (1 Nov: it dropped 69 % of the house): cleaned vs trained from held-out + off-path cameras;
         # the cleaned model ships only if it renders the same (>= 40 dB everywhere, < 0.1 % pixels changed)
+        sj = json.load(open(f'{OUT}/solid/solidify.json')); dead = 1 - sj['kept'] / max(sj['splats'], 1)
+        if dead > 0.4:                                           # runs 4 / 6: 27 % / 59 %; house with the 25k refine stop: 69 % (blobby)
+            msg = f'{dead:.0%} of the trained splats are never seen: the model is thinner than planned (check the MCMC refine schedule)'
+            say('WARNING:', msg)
+            if os.environ.get('GITHUB_STEP_SUMMARY'): open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write(f'Warning: {msg}\n')
         mpu = json.load(open(f'{OUT}/tour/tour.json'))['metres_per_unit']
         run(f'cd {T}/gsplat/examples && PYTHONPATH={T}/gsplat/examples:{FIN}:$PYTHONPATH python {FIN}/model_compare.py {data} {OUT}/solid/check {mpu} 320 12 '
             f'full={OUT}/full/model.ply clean={OUT}/solid/clean.ply')
