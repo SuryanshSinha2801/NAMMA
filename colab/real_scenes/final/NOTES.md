@@ -173,7 +173,7 @@ not match the video. Earlier notes calling its contents "real" were reported, ne
 - Inputs reused from the failed namma-house run (its main camera piece, frames 1394-3357), thinned to every 2nd frame
   (final/thin_model.py): 982 frames, all registered, 1 model, 109,906 points. No new decode or camera solve.
 - Run 4 recipe (mcmc, bilateral grid, depth loss, 1440 px), 83.6 steps per training view: 71,812 steps, 1.89 M splats for
-  46.6 m^2. Go/no-go dry run: 0.221 s/step, 3.8 GB -> 5.34 h predicted; real 4.9 h training, 5 h 20 min for the whole job.
+  46.6 m^2. Go/no-go dry run: 0.221 s/step, 3.8 GB -> 5.34 h predicted; real 4.7 h training (16,793 s), 4.9 h Kaggle job, 5 h 20 min on GitHub.
 - Held-out (123 views): 24.15 dB / SSIM 0.928 / LPIPS 0.146; exposure-fair 27.62 dB / 0.932; needles 7.2 %.
   Run 4: 25.57 / 0.928 / 0.202; exposure-fair 29.22 / 0.934; needles 12.7 %. Same SSIM, better LPIPS and fewer needles,
   1.6 dB lower PSNR. QA pass false (27.62 < 28).
