@@ -450,3 +450,7 @@ frame (`final/thin_model.py`, tested byte-identical round trip). The job must us
   `20261031-1528/tour_v2_url.txt` (private dataset only).
 - Bug fixed 31 Oct: tour_publish 'head' emptied index.js (`open(f,'w').write(patch(open(f).read()))` truncates before reading);
   the live hotel tour showed a white screen for ~40 min. Now read first, size-checked, and restored from history if empty.
+- 1 Nov: house spots 3-5 sat ~1 m off the walk (plan() smoothed the path over len/60 = 16 frames); spots now use the exact
+  filmed pose, walk smoothing is capped at 6 frames, and `make_tour.respot` (PUBLISH.json "respot") fixes a built tour from its
+  camera solve alone. All 6 house spots checked by eye in site_look/20261101-0141 (30 s per spot: software WebGL fly-overs are slow).
+  Open: walk mode assumes one floor; this piece of the walk starts upstairs (camera ~3.7 m) and goes down the stairs.
