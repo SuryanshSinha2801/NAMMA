@@ -47,7 +47,7 @@ def visit_tour(ctx, url, k):
         except Exception as e: rec['overlay_error'] = str(e)[:200]
         try:                                                                              # every spot as a visitor sees it (photo bar)
             for i in range(page.locator('#nm-strip button').count()):
-                page.locator('#nm-strip button').nth(i).click(timeout=30000, force=True); page.wait_for_timeout(9000); shot(page, f'tour{k}_s{i + 1}')
+                page.locator('#nm-strip button').nth(i).click(timeout=30000, force=True); page.wait_for_timeout(int(os.environ.get('SPOT_WAIT_MS', 30000))); shot(page, f'tour{k}_s{i + 1}')   # software WebGL: the fly-over to a far spot takes long
         except Exception as e: rec['spots_error'] = str(e)[:200]
         W, H = page.viewport_size['width'], page.viewport_size['height']
         page.mouse.move(W / 2, H / 2); page.mouse.down(); page.mouse.move(W / 2 + 300, H / 2, steps=20); page.mouse.up(); page.wait_for_timeout(4000)
