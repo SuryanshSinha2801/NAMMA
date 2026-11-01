@@ -454,3 +454,14 @@ frame (`final/thin_model.py`, tested byte-identical round trip). The job must us
   filmed pose, walk smoothing is capped at 6 frames, and `make_tour.respot` (PUBLISH.json "respot") fixes a built tour from its
   camera solve alone. All 6 house spots checked by eye in site_look/20261101-0141 (30 s per spot: software WebGL fly-overs are slow).
   Open: walk mode assumes one floor; this piece of the walk starts upstairs (camera ~3.7 m) and goes down the stairs.
+
+## Automatic checks (1 Nov; owner: "the pipeline should solve problems without you coming to find them")
+Every problem found by hand on the hotel and house tours is now checked (and fixed where possible) by the pipeline itself:
+| What | Where | Rule |
+|---|---|---|
+| Walk collision | `run.py` | every run trains run 4's 2DGS `geo` model beside `full` (55.7 steps/view, timed by the go/no-go); if it cannot fit, the mesh comes from the full model's depth. `MESH_ONLY=1` adds geometry to an existing run (same frames + its level) and `gh_run` starts tour-publish itself |
+| Clean-up | `gh_run.py` tour step | `final/model_compare.py` cleaned vs trained (12 held-out + 9 off-path views): the cleaned model ships only if >= 40 dB and < 0.1 % pixels changed everywhere |
+| Spots | `make_tour.plan` / `respot` | exact filmed poses; each spot is the frame near its place that sees farthest and is sharp (`pick_spots`); horizontal field of view (the viewer's fov is horizontal on landscape screens; vertical gave a 1.5x zoom). Every page update runs `respot` (refuses if cameras do not match) |
+| Publish safety | `tour_publish.py` | index.js size guard + restore; before uploading, the live state is remembered (`publish_state.json`) |
+| Live check | `scripts/site_look/look.py` ASSERT=1 (tour-publish and every new run) | loads, no script errors, index.js > 1 MB, collision.glb > 100 kB, every spot's view matches its real photo (correlation >= 0.6; calibrated: good 0.85-0.99, broken -0.02-0.39), walk mode at every spot not blurred (>= 0.35 of the spot view's sharpness) |
+| Roll back | `tour_publish.py --verify` | live check failed -> the previous version of that link goes back up (or a new link is taken down) and the job fails with the reasons |

@@ -43,6 +43,7 @@ jobs:
           sparse-checkout: |
             colab/real_scenes/v3
             colab/real_scenes/final
+            scripts/site_look
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

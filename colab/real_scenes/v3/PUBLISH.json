@@ -1,10 +1,10 @@
 {
- "run": "20261031-1528",
- "rebuild": true,
- "model": "solid/clean.ply",
+ "run": "20261026-0327",
+ "rebuild": false,
+ "model": "graded/model.ply",
  "sh": 3,
- "dst": "tour_v2",
- "url_name": "tour_v2_url.txt",
+ "dst": "tour_graded",
+ "url_name": "tour_graded_url.txt",
  "prune": false,
  "keep": [
   "20261025-2336-78b302e60a23f66548af",
@@ -19,10 +19,9 @@
   "20261026-0327-61a95d994e7c78c23d8b",
   "20261031-1528-eae460bf984645cbebc8"
  ],
+ "head": true,
  "floorplan": false,
- "head": false,
- "n": 33,
- "note": "whole house tour v2, same link: spots at the exact filmed poses (were ~1 m off on a path smoothed over 16 frames), guided walk smoothed over <= 6 frames; cleaned model, viewer 1.41, current UI",
- "respot": true,
- "folder": "20261031-1528-c83619ed2c647e9986fe"
+ "folder": "20261026-0327-61a95d994e7c78c23d8b",
+ "n": 34,
+ "note": "graded hotel tour, same link: spots at exact poses + horizontal field of view (was a 1.5x zoom), automatic live check with roll back"
 }

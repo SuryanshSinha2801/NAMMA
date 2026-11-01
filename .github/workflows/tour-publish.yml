@@ -45,6 +45,11 @@ jobs:
       - name: Screenshots
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+          ASSERT: "1"
         run: |
           sleep 90
           TOUR_URL_NAME="$(python -c "import json;print(json.load(open('colab/real_scenes/v3/PUBLISH.json')).get('url_name', ''))")" TOUR_RUN="$(python -c "import json;print(json.load(open('colab/real_scenes/v3/PUBLISH.json'))['run'])")" python scripts/site_look/look.py
+      - name: Keep or roll back (live check failed -> the previous version goes back up)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HUGGINGFACE_WRITE_TOKEN }}
+        run: python colab/real_scenes/v3/tour_publish.py --verify

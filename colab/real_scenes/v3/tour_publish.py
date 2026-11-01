@@ -8,7 +8,7 @@ Used by gh_run.py after a run, and on its own (.github/workflows/tour-publish.ym
   'collision': rebuild collision.glb = room box + simplified mesh furniture; 'rebuild': convert the run's model.ply into the tour's
   scene file again with the current make_tour.build settings, e.g. all SH bands; 'head': only rewrite the stored tour's page
   (<run>/TOUR_DST) with the current viewer start options, make_tour.head)"""
-import os, re, secrets, shutil, sys
+import json, os, re, secrets, shutil, sys
 
 
 def restore_js(api, repo, path, dst):
@@ -52,6 +52,39 @@ def lfs_rules(api, sp, kinds=('ply', 'sog', 'spz', 'splat', 'glb', 'bin', 'png',
                             repo_id=sp, repo_type='space', commit_message='large-file storage for tour files')
 
 
+def remember(api, sp, folder, results_repo, url_path):
+    """What is live before this publish (Space commit, whether the folder and the link file existed): --verify can put it back."""
+    try: prev = api.list_repo_commits(sp, repo_type='space')[0].commit_id
+    except Exception: prev = None
+    had = bool(prev) and any(f.startswith(folder + '/') for f in api.list_repo_files(sp, repo_type='space'))
+    url_had = api.file_exists(results_repo, url_path, repo_type='dataset')
+    json.dump(dict(space=sp, folder=folder, prev=prev, had_folder=had, results=results_repo, url_path=url_path, url_had=url_had),
+              open('publish_state.json', 'w'), indent=1)
+
+
+def verify(api, say=print, state='publish_state.json', check='out/assert.json'):
+    """After the live check (scripts/site_look/look.py with ASSERT=1 -> out/assert.json): keep the publish, or put the previous
+    version back (same folder as it was, or remove a new folder and its link) and fail. 31 Oct: a broken publish stayed live for
+    40 min until the owner saw a white screen; this makes that impossible."""
+    st = json.load(open(state)); a = json.load(open(check)) if os.path.exists(check) else dict(ok=False, fails=['the live check did not run'])
+    if a.get('ok'): say('LIVE CHECK PASSED:', json.dumps(a.get('spots', []))); return True
+    say('LIVE CHECK FAILED:', a.get('fails')); sp, folder = st['space'], st['folder']
+    from huggingface_hub import snapshot_download
+    if st.get('had_folder') and st.get('prev'):                                            # the previous version of this link, exactly
+        d = snapshot_download(sp, repo_type='space', revision=st['prev'], allow_patterns=[f'{folder}/*', f'{folder}/**'], local_dir='rollback', token=api.token)
+        api.upload_folder(folder_path=os.path.join(d, folder), path_in_repo=folder, repo_id=sp, repo_type='space', delete_patterns='*',
+                          commit_message='roll back: the live check failed')
+        say('ROLLED BACK', folder, 'to', st['prev'][:8])
+    else:                                                                                  # a new link: take it down again
+        api.delete_folder(folder, repo_id=sp, repo_type='space', commit_message='remove: the live check failed')
+        if not st.get('url_had'):
+            try: api.delete_file(st['url_path'], repo_id=st['results'], repo_type='dataset')
+            except Exception: pass
+        say('REMOVED the new tour', folder)
+    json.dump(dict(st, rolled_back=True, fails=a.get('fails')), open(state, 'w'), indent=1)
+    return False
+
+
 def publish(api, user, results_repo, run, tour_dir, say=print, url_path=None):
     sp = f'{user}/namma-tour'; api.create_repo(sp, repo_type='space', space_sdk='static', private=False, exist_ok=True)
     if os.environ.get('TOUR_PRUNE') == '1':                                               # deletes old tours: only with the owner's OK
@@ -60,7 +93,9 @@ def publish(api, user, results_repo, run, tour_dir, say=print, url_path=None):
         if not re.fullmatch(r'\d{8}-\d{4}(-[a-z0-9]+)?-[0-9a-f]{20}', f): api.delete_folder(f, repo_id=sp, repo_type='space')   # (digits: 'world1')
     folder = os.environ.get('TOUR_FOLDER') or f'{run}-{secrets.token_hex(10)}'          # TOUR_FOLDER: update a published tour in place (same link)
     for k in range(1, 10):                         # a full free Space (1 GB) spills over to namma-tour-2, -3, ... (old links stay)
-        try: lfs_rules(api, sp); api.upload_folder(folder_path=tour_dir, path_in_repo=folder, repo_id=sp, repo_type='space', ignore_patterns=['plan.json']); break
+        try:
+            lfs_rules(api, sp); remember(api, sp, folder, results_repo, url_path or f'{run}/tour_url.txt')     # for --verify / roll back
+            api.upload_folder(folder_path=tour_dir, path_in_repo=folder, repo_id=sp, repo_type='space', ignore_patterns=['plan.json']); break
         except Exception as e:
             if 'Storage limit' not in str(e) or k == 9: raise
             sp = f'{user}/namma-tour-{k + 1}'; say('Space full, publishing to', sp)
@@ -76,6 +111,9 @@ def publish(api, user, results_repo, run, tour_dir, say=print, url_path=None):
     say('tour published (public Space, random folder; link in the private results dataset: tour_url.txt)')
 
 
+if __name__ == '__main__' and sys.argv[1:2] == ['--verify']:                         # keep or roll back after the live check
+    from huggingface_hub import HfApi
+    sys.exit(0 if verify(HfApi(token=os.environ['HF_TOKEN'])) else 'live check failed: rolled back (see the log above)')
 if __name__ == '__main__':
     from huggingface_hub import HfApi, snapshot_download
     run = sys.argv[1]; tok = os.environ.get('HF_TOKEN'); assert tok, 'HF_TOKEN missing'
@@ -91,6 +129,7 @@ if __name__ == '__main__':
         sys.exit(0)
     fp, co, rb, hd, rs = ('floorplan' in sys.argv[2:], 'collision' in sys.argv[2:], 'rebuild' in sys.argv[2:],
                           'head' in sys.argv[2:], 'respot' in sys.argv[2:])
+    rs = rs or ((hd or rb) and 'norespot' not in sys.argv[2:])      # every page update repairs spots + field of view itself (checked, safe)
     extra = ([f'{run}/full/{x}' for x in ('model.ply', 'level.json', 'nav.json')] if fp or rb else []) + ([f'{run}/mesh/mesh.glb'] if co or rb else [])
     if rb and os.environ.get('TOUR_MODEL'): extra.append(f"{run}/{os.environ['TOUR_MODEL']}")
     if rs: extra += [f'{run}/sparse/**', f'{run}/full/level.json']
@@ -105,7 +144,8 @@ if __name__ == '__main__':
     if rs:                                                                                # spots at the exact filmed poses (make_tour.respot)
         import subprocess
         if not os.path.isdir('gsplat'): subprocess.run('git clone -q --depth 1 -b v1.5.3 https://github.com/nerfstudio-project/gsplat gsplat', shell=True, check=True)
-        print('respot:', make_tour.respot(os.path.join(d, run), tour, os.path.abspath('gsplat/examples')), flush=True)
+        try: print('respot:', make_tour.respot(os.path.join(d, run), tour, os.path.abspath('gsplat/examples')), flush=True)
+        except (AssertionError, FileNotFoundError, StopIteration) as e: print('respot skipped (tour left as it was):', str(e)[:200], flush=True)
     if fp:
         print('floor plan redrawn:', make_tour.floorplan(os.path.join(d, run), tour), flush=True)
         for x in ('floorplan.png', 'walls.json'):
@@ -135,8 +175,8 @@ if __name__ == '__main__':
         assert os.path.getsize(f'{tour}/index.js') > 100000
         open(f'{tour}/index.html', 'w').write(h)
         print('page start options updated', flush=True)
-        for x in ('index.html', 'index.js'):
-            api.upload_file(path_or_fileobj=f'{tour}/{x}', path_in_repo=f'{run}/{src}/{x}', repo_id=repo, repo_type='dataset')
+        for x in ('index.html', 'index.js', 'settings.json', 'overlay.json', 'tour.json'):     # page + repaired spots / fov kept with the run
+            if os.path.exists(f'{tour}/{x}'): api.upload_file(path_or_fileobj=f'{tour}/{x}', path_in_repo=f'{run}/{src}/{x}', repo_id=repo, repo_type='dataset')
     publish(api, user, repo, run, tour, url_path=f"{run}/{os.environ.get('TOUR_URL_NAME', 'tour_url.txt')}")   # a new name keeps the old link
     if os.environ.get('INBOX_JOB'):                                                       # finish an app job whose publish failed
         import inbox; inbox.set_status(os.environ['INBOX_JOB'], 'done', run=run, link=open('tour_url.txt').read().strip())
