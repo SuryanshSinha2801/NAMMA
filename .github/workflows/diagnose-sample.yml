@@ -20,8 +20,7 @@ jobs:
           KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_TOKEN }}
         run: |
           set +e
-          echo "=== Kaggle account ==="
-          kaggle config view
+          echo "=== Checking sample dataset and kernel only; credentials are never printed ==="
           echo "=== Sample dataset status ==="
           kaggle datasets status suryanshsinha28/namma-r1-sample
           echo "DATASET_STATUS_EXIT=$?"
