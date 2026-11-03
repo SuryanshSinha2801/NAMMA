@@ -6,7 +6,7 @@
 
 ## Start here
 
-For the production v3 pipeline, follow [test/README.md](test/README.md). For filming guidance, read [docs/CAPTURE_GUIDE.md](docs/CAPTURE_GUIDE.md). The current operational hand-off, findings, quality thresholds, and known limitations live in [docs/HANDOFF_V3.md](docs/HANDOFF_V3.md).
+For the production v3 pipeline, follow [test/README.md](test/README.md). For filming guidance, read [docs/CAPTURE_GUIDE.md](docs/CAPTURE_GUIDE.md). The operational hand-off, findings, quality thresholds, and known limitations live in [docs/HANDOFF_V3.md](docs/HANDOFF_V3.md).
 
 ## Production pipeline
 
@@ -58,10 +58,10 @@ Before running it, configure these repository secrets in GitHub Actions:
 | `KAGGLE_API_TOKEN` or `KAGGLE_TOKEN` | Kaggle API authentication for private dataset and kernel operations |
 | `HF_TOKEN` or `HUGGINGFACE_WRITE_TOKEN` | Hugging Face write access for output publication |
 
-The Actions workflows are currently branch-pinned to `claude/wonderful-cori-i3fn41`. Use that configured branch for push-triggered runs, or use **Run workflow** in GitHub Actions after confirming the branch and input configuration. Do not assume that pushing `main` automatically runs a reconstruction.
+Workflow triggers can be branch-pinned in each repository. Before starting a run, inspect the `on.push.branches` setting in the relevant workflow, then use that branch for push-triggered runs or select **Run workflow** in GitHub Actions. Do not assume that pushing `main` automatically starts a reconstruction.
 
 ```bash
-git clone https://github.com/SuryanshSinha2801/NAMMA.git
+git clone <this-repository-url>
 cd NAMMA
 
 # Review and intentionally bump the sample run counter before committing.
