@@ -91,6 +91,22 @@ tour/                optional web-tour assets
 
 Treat the QA sheet and metrics as release evidence, not decoration. NAMMA’s v3 hand-off defines the current pass criteria, including exposure-fair held-out quality, splat-shape checks, and human inspection of off-path views. A completed job is not automatically a validated scene.
 
+## Explore a v3 tour
+
+Open the live [NAMMA v3 tour](https://anasrazy-namma-tour.static.hf.space/20261026-0327-61a95d994e7c78c23d8b/index.html?budget=4&showcollision=0&hpr=1) to explore a published reconstruction. The viewer begins in guided spot mode and shows a floor plan, a row of photo spots, and controls for switching navigation modes.
+
+![NAMMA v3 viewer: floor plan, spot navigation, and tour controls](docs/img/namma-v3-tour-viewer.png)
+
+### Viewer controls
+
+1. Select a **Spot** from the thumbnail strip or choose a marker on the **floor plan** to jump to a captured viewpoint.
+2. Use the arrows in the top spot bar to move through viewpoints in sequence.
+3. Select the **person** control in the bottom-right toolbar to enter walk mode.
+4. In walk mode, use **W / A / S / D** to move, the **mouse** to look, **Space** to jump, and **Shift / Ctrl** to adjust movement speed. Use **Q / E** (or the gear control) to adjust eye height.
+5. Click a visible point in the scene to walk toward it. Open **Controls (?)** from the floor-plan panel at any time to see the in-view help.
+
+The tour is a visual exploration tool. Only treat collision or navigation behaviour as valid when the published scene explicitly includes reviewed navigation data.
+
 ## Local FastAPI prototype
 
 The local service is intentionally separate from the cloud v3 route. It supports video upload, frame extraction, COLMAP reconstruction, quality-gated Gaussian training, live phone capture, collision candidates, reviewed navigation preparation, and the included viewer.
